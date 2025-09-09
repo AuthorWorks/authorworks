@@ -93,6 +93,7 @@ services:
     environment:
       HOST: 0.0.0.0
       SERVICE_PORT: 3006
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
     networks:
       - llm_network
@@ -102,6 +103,7 @@ services:
     environment:
       HOST: 0.0.0.0
       SERVICE_PORT: 3007
+      QDRANT_GRPC_URL: http://qdrant:6334
       ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
     networks:
       - llm_network
