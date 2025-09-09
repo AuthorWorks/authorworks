@@ -1,6 +1,3 @@
-[submodule "authorworks"]
-	path = authorworks
-	url = git@github.com:AuthorWorks/authorworks.git
 [submodule "authorworks-audio-service"]
 	path = authorworks-audio-service
 	url = git@github.com:AuthorWorks/authorworks-audio-service.git
