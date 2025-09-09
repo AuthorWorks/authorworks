@@ -40,3 +40,6 @@
 [submodule "authorworks-video-service"]
 	path = authorworks-video-service
 	url = git@github.com:AuthorWorks/authorworks-video-service.git
+[submodule "author_works"]
+	path = author_works
+	url = git@github.com:AuthorWorks/author_works.git
