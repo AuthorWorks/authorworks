@@ -1,0 +1,45 @@
+[submodule "authorworks"]
+	path = authorworks
+	url = git@github.com:AuthorWorks/authorworks.git
+[submodule "authorworks-audio-service"]
+	path = authorworks-audio-service
+	url = git@github.com:AuthorWorks/authorworks-audio-service.git
+[submodule "authorworks-content-service"]
+	path = authorworks-content-service
+	url = git@github.com:AuthorWorks/authorworks-content-service.git
+[submodule "authorworks-discovery-service"]
+	path = authorworks-discovery-service
+	url = git@github.com:AuthorWorks/authorworks-discovery-service.git
+[submodule "authorworks-docs"]
+	path = authorworks-docs
+	url = git@github.com:AuthorWorks/authorworks-docs.git
+[submodule "authorworks-editor-service"]
+	path = authorworks-editor-service
+	url = git@github.com:AuthorWorks/authorworks-editor-service.git
+[submodule "authorworks-graphics-service"]
+	path = authorworks-graphics-service
+	url = git@github.com:AuthorWorks/authorworks-graphics-service.git
+[submodule "authorworks-messaging-service"]
+	path = authorworks-messaging-service
+	url = git@github.com:AuthorWorks/authorworks-messaging-service.git
+[submodule "authorworks-platform"]
+	path = authorworks-platform
+	url = git@github.com:AuthorWorks/authorworks-platform.git
+[submodule "authorworks-storage-service"]
+	path = authorworks-storage-service
+	url = git@github.com:AuthorWorks/authorworks-storage-service.git
+[submodule "authorworks-subscription-service"]
+	path = authorworks-subscription-service
+	url = git@github.com:AuthorWorks/authorworks-subscription-service.git
+[submodule "authorworks-ui"]
+	path = authorworks-ui
+	url = git@github.com:AuthorWorks/authorworks-ui.git
+[submodule "authorworks-ui-shell"]
+	path = authorworks-ui-shell
+	url = git@github.com:AuthorWorks/authorworks-ui-shell.git
+[submodule "authorworks-user-service"]
+	path = authorworks-user-service
+	url = git@github.com:AuthorWorks/authorworks-user-service.git
+[submodule "authorworks-video-service"]
+	path = authorworks-video-service
+	url = git@github.com:AuthorWorks/authorworks-video-service.git
