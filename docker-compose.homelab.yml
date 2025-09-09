@@ -1,0 +1,143 @@
+version: '3.8'
+
+networks:
+  llm_network:
+    external: true
+
+services:
+  # API Gateway exposed via Traefik
+  api-gateway:
+    image: nginx:alpine
+    container_name: authorworks-nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - user-service
+      - content-service
+      - storage-service
+      - editor-service
+    networks:
+      - llm_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.aw-api.rule=Host(`aw-api.${DOMAIN}`)"
+      - "traefik.http.routers.aw-api.entrypoints=websecure"
+      - "traefik.http.routers.aw-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.aw-api.loadbalancer.server.port=8080"
+      - "traefik.http.routers.aw-api.service=aw-api"
+
+  # UI Shell (web bundle served by Nginx)
+  ui-shell:
+    build: ./authorworks-ui-shell
+    networks:
+      - llm_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.aw-ui.rule=Host(`aw-ui.${DOMAIN}`)"
+      - "traefik.http.routers.aw-ui.entrypoints=websecure"
+      - "traefik.http.routers.aw-ui.tls.certresolver=letsencrypt"
+      - "traefik.http.services.aw-ui.loadbalancer.server.port=80"
+      - "traefik.http.routers.aw-ui.service=aw-ui"
+
+  user-service:
+    build: ./authorworks-user-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3001
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@neon-postgres:5432/authorworks
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
+    networks:
+      - llm_network
+
+  content-service:
+    build: ./authorworks-content-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3002
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@neon-postgres:5432/authorworks
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      STORAGE_SERVICE_URL: http://storage-service:3003
+      ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
+    networks:
+      - llm_network
+
+  storage-service:
+    build: ./authorworks-storage-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3003
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@neon-postgres:5432/authorworks
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
+    networks:
+      - llm_network
+
+  editor-service:
+    build: ./authorworks-editor-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3004
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@neon-postgres:5432/authorworks
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      CONTENT_SERVICE_URL: http://content-service:3002
+      ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
+    networks:
+      - llm_network
+
+  # Optional placeholder services for homelab routing and health
+  messaging-service:
+    build: ./authorworks-messaging-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3006
+      ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
+    networks:
+      - llm_network
+
+  discovery-service:
+    build: ./authorworks-discovery-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3007
+      ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
+    networks:
+      - llm_network
+
+  subscription-service:
+    build: ./authorworks-subscription-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3005
+      ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
+    networks:
+      - llm_network
+
+  audio-service:
+    build: ./authorworks-audio-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3008
+      ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
+    networks:
+      - llm_network
+
+  video-service:
+    build: ./authorworks-video-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3009
+      ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
+    networks:
+      - llm_network
+
+  graphics-service:
+    build: ./authorworks-graphics-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3010
+      ALLOWED_ORIGINS: https://aw-ui.${DOMAIN}
+    networks:
+      - llm_network

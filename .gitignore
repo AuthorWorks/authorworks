@@ -1,0 +1,13 @@
+# Global ignores for umbrella repo
+**/.env
+**/.env.*
+**/target
+**/debug
+**/release
+**/*.log
+.DS_Store
+.zed/
+.idea/
+.vscode/
+node_modules/
+
