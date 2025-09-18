@@ -1,0 +1,37 @@
+# Redis configuration for Spin applications
+# This provides caching and session management for all services
+
+[redis_config]
+default_ttl = 3600  # 1 hour default TTL
+max_connections = 100
+connection_timeout = 5000  # 5 seconds
+
+# Per-service Redis databases
+[redis_databases]
+user_service = 0
+content_service = 1
+storage_service = 2
+editor_service = 3
+messaging_service = 4
+discovery_service = 5
+audio_service = 6
+video_service = 7
+graphics_service = 8
+subscription_service = 9
+
+# Cache configurations per service
+[cache_config.user_service]
+session_ttl = 86400  # 24 hours
+profile_cache_ttl = 3600  # 1 hour
+
+[cache_config.content_service]
+document_cache_ttl = 1800  # 30 minutes
+metadata_cache_ttl = 7200  # 2 hours
+
+[cache_config.storage_service]
+presigned_url_ttl = 3600  # 1 hour
+file_metadata_ttl = 86400  # 24 hours
+
+[cache_config.media_services]
+thumbnail_cache_ttl = 604800  # 1 week
+processed_media_ttl = 86400  # 24 hours

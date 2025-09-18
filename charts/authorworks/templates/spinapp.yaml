@@ -1,0 +1,102 @@
+apiVersion: core.spinoperator.dev/v1alpha1
+kind: SpinApp
+metadata:
+  name: {{ include "authorworks-platform.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "authorworks-platform.labels" . | nindent 4 }}
+spec:
+  image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+  executor: {{ .Values.spinApp.executor }}
+  replicas: {{ .Values.replicaCount }}
+  enableAutoscaling: {{ .Values.spinApp.enableAutoscaling }}
+  
+  resources:
+    limits:
+      cpu: {{ .Values.resources.limits.cpu }}
+      memory: {{ .Values.resources.limits.memory }}
+    requests:
+      cpu: {{ .Values.resources.requests.cpu }}
+      memory: {{ .Values.resources.requests.memory }}
+  
+  variables:
+    - name: DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "authorworks-platform.fullname" . }}-secrets
+          key: database-url
+    - name: REDIS_URL
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "authorworks-platform.fullname" . }}-secrets
+          key: redis-url
+    {{- if .Values.minio.enabled }}
+    - name: MINIO_ENDPOINT
+      value: "http://{{ .Release.Name }}-minio:9000"
+    - name: MINIO_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "authorworks-platform.fullname" . }}-secrets
+          key: minio-access-key
+    - name: MINIO_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "authorworks-platform.fullname" . }}-secrets
+          key: minio-secret-key
+    {{- end }}
+    - name: ALLOWED_ORIGINS
+      value: {{ .Values.env.ALLOWED_ORIGINS | quote }}
+    - name: LOG_LEVEL
+      value: {{ .Values.env.LOG_LEVEL | quote }}
+
+{{- if .Values.multiTenancy.enabled }}
+---
+{{- range .Values.multiTenancy.tenants }}
+apiVersion: core.spinoperator.dev/v1alpha1
+kind: SpinApp
+metadata:
+  name: {{ include "authorworks-platform.fullname" $ }}-{{ .name }}
+  namespace: {{ .namespace }}
+  labels:
+    {{- include "authorworks-platform.labels" $ | nindent 4 }}
+    tenant: {{ .name }}
+spec:
+  image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+  executor: {{ $.Values.spinApp.executor }}
+  replicas: {{ .replicas }}
+  enableAutoscaling: {{ $.Values.spinApp.enableAutoscaling }}
+  
+  resources:
+    limits:
+      cpu: {{ .resources.limits.cpu }}
+      memory: {{ .resources.limits.memory }}
+    requests:
+      cpu: {{ .resources.requests.cpu }}
+      memory: {{ .resources.requests.memory }}
+  
+  variables:
+    - name: DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: {{ .name }}-secrets
+          key: database-url
+    - name: REDIS_URL
+      valueFrom:
+        secretKeyRef:
+          name: {{ .name }}-secrets
+          key: redis-url
+    - name: TENANT_ID
+      value: {{ .name | quote }}
+    {{- if $.Values.minio.enabled }}
+    - name: MINIO_ENDPOINT
+      value: "http://{{ $.Release.Name }}-minio:9000"
+    - name: MINIO_BUCKET_PREFIX
+      value: {{ .name | quote }}
+    {{- end }}
+    - name: ALLOWED_ORIGINS
+      value: {{ $.Values.env.ALLOWED_ORIGINS | quote }}
+    - name: LOG_LEVEL
+      value: {{ $.Values.env.LOG_LEVEL | quote }}
+---
+{{- end }}
+{{- end }}

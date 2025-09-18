@@ -1,0 +1,17 @@
+[build]
+target = "wasm32-wasi"
+rustflags = ["-C", "link-arg=--max-memory=4294967296"]
+
+[target.wasm32-wasi]
+runner = "spin up --listen 127.0.0.1:3000"
+
+[alias]
+wasm-build = "build --target wasm32-wasi --release"
+wasm-check = "check --target wasm32-wasi"
+spin-build = "build --target wasm32-wasi --release --workspace"
+
+[env]
+RUST_LOG = "info"
+
+[registries]
+crates-io = { index = "https://github.com/rust-lang/crates.io-index" }

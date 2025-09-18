@@ -1,0 +1,177 @@
+# Default values for authorworks-platform
+replicaCount: 3
+
+image:
+  repository: ghcr.io/authorworks/authorworks-platform
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+spinApp:
+  executor: containerd-shim-spin
+  enableAutoscaling: true
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Multi-tenancy configuration
+multiTenancy:
+  enabled: true
+  tenants:
+    - name: tenant-1
+      namespace: authorworks-tenant-1
+      replicas: 2
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+        requests:
+          cpu: 250m
+          memory: 512Mi
+      database:
+        name: tenant1_db
+        user: tenant1
+    - name: tenant-2
+      namespace: authorworks-tenant-2
+      replicas: 2
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+        requests:
+          cpu: 250m
+          memory: 512Mi
+      database:
+        name: tenant2_db
+        user: tenant2
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+  hosts:
+    - host: authorworks.homelab.local
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: api.authorworks.homelab.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: authorworks-tls
+      hosts:
+        - authorworks.homelab.local
+        - api.authorworks.homelab.local
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+
+# Database configuration
+postgresql:
+  enabled: true
+  auth:
+    database: authorworks
+    username: postgres
+    password: changeme
+    postgresPassword: changeme
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+  metrics:
+    enabled: true
+
+# Redis configuration
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: changeme
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+  metrics:
+    enabled: true
+
+# MinIO configuration
+minio:
+  enabled: true
+  auth:
+    rootUser: minioadmin
+    rootPassword: changeme
+  persistence:
+    enabled: true
+    size: 100Gi
+  metrics:
+    enabled: true
+
+# Environment variables
+env:
+  ALLOWED_ORIGINS: "https://authorworks.homelab.local"
+  LOG_LEVEL: "info"
+
+# Secrets
+secrets:
+  create: true
+  
+# ServiceMonitor for Prometheus
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  path: /metrics
+
+# Network policies
+networkPolicy:
+  enabled: true
+  policyTypes:
+    - Ingress
+    - Egress
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Liveness and readiness probes
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5

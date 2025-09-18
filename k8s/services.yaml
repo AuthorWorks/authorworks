@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: authorworks-platform
+  namespace: authorworks
+  labels:
+    app: authorworks
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http
+  selector:
+    core.spinoperator.dev/app-name: authorworks-platform
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authorworks-tenant-1
+  namespace: authorworks-tenant-1
+  labels:
+    app: authorworks
+    tenant: tenant-1
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http
+  selector:
+    core.spinoperator.dev/app-name: authorworks-tenant-1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authorworks-tenant-2
+  namespace: authorworks-tenant-2
+  labels:
+    app: authorworks
+    tenant: tenant-2
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http
+  selector:
+    core.spinoperator.dev/app-name: authorworks-tenant-2

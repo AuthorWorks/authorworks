@@ -1,0 +1,190 @@
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: authorworks-spin-metrics
+  namespace: authorworks
+  labels:
+    app: authorworks
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: authorworks
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      scheme: http
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spin-health-checks
+  namespace: authorworks
+data:
+  health-check.sh: |
+    #!/bin/bash
+    # Health check script for Spin applications
+    
+    SERVICES=(
+      "user-service:3001"
+      "content-service:3002"
+      "storage-service:3003"
+      "editor-service:3004"
+      "messaging-service:3006"
+      "discovery-service:3007"
+      "audio-service:3008"
+      "video-service:3009"
+      "graphics-service:3010"
+      "subscription-service:3005"
+    )
+    
+    for service in "${SERVICES[@]}"; do
+      IFS=':' read -r name port <<< "$service"
+      response=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${port}/health")
+      if [ "$response" = "200" ]; then
+        echo "✅ ${name} is healthy"
+      else
+        echo "❌ ${name} is unhealthy (HTTP ${response})"
+        exit 1
+      fi
+    done
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: spin-health-monitor
+  namespace: authorworks
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: health-checker
+            image: curlimages/curl:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              for service in user content storage editor messaging discovery audio video graphics subscription; do
+                curl -f "http://authorworks-platform.authorworks/api/${service}/health" || exit 1
+              done
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: authorworks
+data:
+  spin-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "AuthorWorks SPIN WebAssembly Metrics",
+        "panels": [
+          {
+            "title": "Request Rate",
+            "targets": [
+              {
+                "expr": "rate(spin_http_requests_total[5m])",
+                "legendFormat": "{{ service }}"
+              }
+            ]
+          },
+          {
+            "title": "Response Time P95",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(spin_http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "{{ service }}"
+              }
+            ]
+          },
+          {
+            "title": "WASM Memory Usage",
+            "targets": [
+              {
+                "expr": "spin_wasm_memory_bytes",
+                "legendFormat": "{{ service }}"
+              }
+            ]
+          },
+          {
+            "title": "Error Rate",
+            "targets": [
+              {
+                "expr": "rate(spin_http_requests_total{status=~'5..'}[5m])",
+                "legendFormat": "{{ service }}"
+              }
+            ]
+          },
+          {
+            "title": "Cache Hit Rate",
+            "targets": [
+              {
+                "expr": "rate(spin_cache_hits_total[5m]) / (rate(spin_cache_hits_total[5m]) + rate(spin_cache_misses_total[5m]))",
+                "legendFormat": "{{ service }}"
+              }
+            ]
+          },
+          {
+            "title": "Active Connections",
+            "targets": [
+              {
+                "expr": "spin_active_connections",
+                "legendFormat": "{{ service }}"
+              }
+            ]
+          }
+        ]
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alerting-rules
+  namespace: authorworks
+data:
+  alerts.yaml: |
+    groups:
+    - name: spin_alerts
+      interval: 30s
+      rules:
+      - alert: HighErrorRate
+        expr: rate(spin_http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "{{ $labels.service }} has error rate of {{ $value }}"
+      
+      - alert: HighMemoryUsage
+        expr: spin_wasm_memory_bytes > 3221225472  # 3GB
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High WASM memory usage"
+          description: "{{ $labels.service }} using {{ $value }} bytes"
+      
+      - alert: SlowResponseTime
+        expr: histogram_quantile(0.95, rate(spin_http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow response time"
+          description: "{{ $labels.service }} P95 latency is {{ $value }}s"
+      
+      - alert: ServiceDown
+        expr: up{job="spin-services"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service is down"
+          description: "{{ $labels.service }} has been down for 2 minutes"

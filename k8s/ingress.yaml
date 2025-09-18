@@ -1,0 +1,91 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authorworks-ingress
+  namespace: authorworks
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - authorworks.homelab.local
+        - api.authorworks.homelab.local
+      secretName: authorworks-tls
+  rules:
+    - host: authorworks.homelab.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-platform
+                port:
+                  number: 80
+    - host: api.authorworks.homelab.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-platform
+                port:
+                  number: 80
+---
+# Tenant-specific ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authorworks-tenant-1-ingress
+  namespace: authorworks-tenant-1
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - tenant1.authorworks.homelab.local
+      secretName: tenant-1-tls
+  rules:
+    - host: tenant1.authorworks.homelab.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-tenant-1
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authorworks-tenant-2-ingress
+  namespace: authorworks-tenant-2
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - tenant2.authorworks.homelab.local
+      secretName: tenant-2-tls
+  rules:
+    - host: tenant2.authorworks.homelab.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-tenant-2
+                port:
+                  number: 80

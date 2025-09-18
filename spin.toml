@@ -1,0 +1,88 @@
+spin_manifest_version = 2
+
+[application]
+name = "authorworks-platform"
+version = "1.0.0"
+authors = ["AuthorWorks Team"]
+description = "AI-assisted content creation platform - Spin WebAssembly deployment"
+
+# User Service Component
+[[trigger.http]]
+route = "/api/user/..."
+component = "user-service"
+
+[component.user-service]
+source = "authorworks-user-service/target/wasm32-wasi/release/authorworks_user_service.wasm"
+allowed_outbound_hosts = ["postgres://neon-postgres:5432", "redis://*:6379"]
+[component.user-service.build]
+command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-user-service/Cargo.toml"
+watch = ["authorworks-user-service/src/**/*.rs", "authorworks-user-service/Cargo.toml"]
+
+# Content Service Component
+[[trigger.http]]
+route = "/api/content/..."
+component = "content-service"
+
+[component.content-service]
+source = "authorworks-content-service/target/wasm32-wasi/release/authorworks_content_service.wasm"
+allowed_outbound_hosts = ["postgres://neon-postgres:5432", "redis://*:6379", "http://storage-service:3003"]
+[component.content-service.build]
+command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-content-service/Cargo.toml"
+watch = ["authorworks-content-service/src/**/*.rs", "authorworks-content-service/Cargo.toml"]
+
+# Storage Service Component
+[[trigger.http]]
+route = "/api/storage/..."
+component = "storage-service"
+
+[component.storage-service]
+source = "authorworks-storage-service/target/wasm32-wasi/release/authorworks_storage_service.wasm"
+allowed_outbound_hosts = ["postgres://neon-postgres:5432", "http://minio:9000", "https://*.s3.amazonaws.com"]
+[component.storage-service.build]
+command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-storage-service/Cargo.toml"
+watch = ["authorworks-storage-service/src/**/*.rs", "authorworks-storage-service/Cargo.toml"]
+
+# Editor Service Component
+[[trigger.http]]
+route = "/api/editor/..."
+component = "editor-service"
+
+[component.editor-service]
+source = "authorworks-editor-service/target/wasm32-wasi/release/authorworks_editor_service.wasm"
+allowed_outbound_hosts = ["postgres://neon-postgres:5432", "redis://*:6379", "http://content-service:3002"]
+[component.editor-service.build]
+command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-editor-service/Cargo.toml"
+watch = ["authorworks-editor-service/src/**/*.rs", "authorworks-editor-service/Cargo.toml"]
+
+# Messaging Service Component
+[[trigger.http]]
+route = "/api/messaging/..."
+component = "messaging-service"
+
+[component.messaging-service]
+source = "authorworks-messaging-service/target/wasm32-wasi/release/authorworks_messaging_service.wasm"
+allowed_outbound_hosts = ["redis://*:6379", "wss://*"]
+[component.messaging-service.build]
+command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-messaging-service/Cargo.toml"
+watch = ["authorworks-messaging-service/src/**/*.rs", "authorworks-messaging-service/Cargo.toml"]
+
+# Discovery Service Component
+[[trigger.http]]
+route = "/api/discovery/..."
+component = "discovery-service"
+
+[component.discovery-service]
+source = "authorworks-discovery-service/target/wasm32-wasi/release/authorworks_discovery_service.wasm"
+allowed_outbound_hosts = ["http://qdrant:6334", "postgres://neon-postgres:5432"]
+[component.discovery-service.build]
+command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-discovery-service/Cargo.toml"
+watch = ["authorworks-discovery-service/src/**/*.rs", "authorworks-discovery-service/Cargo.toml"]
+
+# UI Shell Static Files
+[[trigger.http]]
+route = "/..."
+component = "ui-shell"
+
+[component.ui-shell]
+source = { url = "https://github.com/fermyon/spin-fileserver/releases/download/v0.3.0/spin_static_fs.wasm", digest = "sha256:ef88708817e107bf49985c7cefe4dd1f199de26d6b4fd662b44de5319a00b36e" }
+files = [{ source = "authorworks-ui-shell/dist", destination = "/" }]

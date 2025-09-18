@@ -11,3 +11,33 @@
 .vscode/
 node_modules/
 
+# Rust/WASM
+Cargo.lock
+**/*.rs.bk
+*.wasm.opt
+
+# Spin/WASM artifacts
+.spin/
+spin.lock
+*.wasm
+!**/target/wasm32-wasi/release/*.wasm
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+tfplan
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# Benchmark results
+benchmark_*.json
+benchmark_*.md
+
+# Cache directories
+.cache/
+.spin-cache/
+
