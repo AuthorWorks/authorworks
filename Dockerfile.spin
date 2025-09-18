@@ -17,6 +17,10 @@ COPY authorworks-storage-service ./authorworks-storage-service
 COPY authorworks-editor-service ./authorworks-editor-service
 COPY authorworks-messaging-service ./authorworks-messaging-service
 COPY authorworks-discovery-service ./authorworks-discovery-service
+COPY authorworks-audio-service ./authorworks-audio-service
+COPY authorworks-video-service ./authorworks-video-service
+COPY authorworks-graphics-service ./authorworks-graphics-service
+COPY authorworks-subscription-service ./authorworks-subscription-service
 COPY authorworks-ui-shell ./authorworks-ui-shell
 COPY spin.toml ./spin.toml
 
@@ -27,6 +31,10 @@ RUN cd authorworks-storage-service && cargo build --target wasm32-wasi --release
 RUN cd authorworks-editor-service && cargo build --target wasm32-wasi --release
 RUN cd authorworks-messaging-service && cargo build --target wasm32-wasi --release
 RUN cd authorworks-discovery-service && cargo build --target wasm32-wasi --release
+RUN cd authorworks-audio-service && cargo build --target wasm32-wasi --release
+RUN cd authorworks-video-service && cargo build --target wasm32-wasi --release
+RUN cd authorworks-graphics-service && cargo build --target wasm32-wasi --release
+RUN cd authorworks-subscription-service && cargo build --target wasm32-wasi --release
 
 # Build UI if needed
 RUN if [ -f "authorworks-ui-shell/package.json" ]; then \
@@ -53,6 +61,10 @@ COPY --from=builder /app/authorworks-storage-service/target/wasm32-wasi/release/
 COPY --from=builder /app/authorworks-editor-service/target/wasm32-wasi/release/*.wasm ./authorworks-editor-service/target/wasm32-wasi/release/
 COPY --from=builder /app/authorworks-messaging-service/target/wasm32-wasi/release/*.wasm ./authorworks-messaging-service/target/wasm32-wasi/release/
 COPY --from=builder /app/authorworks-discovery-service/target/wasm32-wasi/release/*.wasm ./authorworks-discovery-service/target/wasm32-wasi/release/
+COPY --from=builder /app/authorworks-audio-service/target/wasm32-wasi/release/*.wasm ./authorworks-audio-service/target/wasm32-wasi/release/
+COPY --from=builder /app/authorworks-video-service/target/wasm32-wasi/release/*.wasm ./authorworks-video-service/target/wasm32-wasi/release/
+COPY --from=builder /app/authorworks-graphics-service/target/wasm32-wasi/release/*.wasm ./authorworks-graphics-service/target/wasm32-wasi/release/
+COPY --from=builder /app/authorworks-subscription-service/target/wasm32-wasi/release/*.wasm ./authorworks-subscription-service/target/wasm32-wasi/release/
 
 # Copy UI dist if it exists
 COPY --from=builder /app/authorworks-ui-shell/dist ./authorworks-ui-shell/dist

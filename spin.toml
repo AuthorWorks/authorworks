@@ -12,10 +12,10 @@ route = "/api/user/..."
 component = "user-service"
 
 [component.user-service]
-source = "authorworks-user-service/target/wasm32-wasi/release/authorworks_user_service.wasm"
+source = "authorworks-user-service/target/wasm32-wasip1p1/release/authorworks_user_service.wasm"
 allowed_outbound_hosts = ["postgres://neon-postgres:5432", "redis://*:6379"]
 [component.user-service.build]
-command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-user-service/Cargo.toml"
+command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-user-service/Cargo.toml"
 watch = ["authorworks-user-service/src/**/*.rs", "authorworks-user-service/Cargo.toml"]
 
 # Content Service Component
@@ -24,10 +24,10 @@ route = "/api/content/..."
 component = "content-service"
 
 [component.content-service]
-source = "authorworks-content-service/target/wasm32-wasi/release/authorworks_content_service.wasm"
+source = "authorworks-content-service/target/wasm32-wasip1/release/authorworks_content_service.wasm"
 allowed_outbound_hosts = ["postgres://neon-postgres:5432", "redis://*:6379", "http://storage-service:3003"]
 [component.content-service.build]
-command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-content-service/Cargo.toml"
+command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-content-service/Cargo.toml"
 watch = ["authorworks-content-service/src/**/*.rs", "authorworks-content-service/Cargo.toml"]
 
 # Storage Service Component
@@ -36,10 +36,10 @@ route = "/api/storage/..."
 component = "storage-service"
 
 [component.storage-service]
-source = "authorworks-storage-service/target/wasm32-wasi/release/authorworks_storage_service.wasm"
+source = "authorworks-storage-service/target/wasm32-wasip1/release/authorworks_storage_service.wasm"
 allowed_outbound_hosts = ["postgres://neon-postgres:5432", "http://minio:9000", "https://*.s3.amazonaws.com"]
 [component.storage-service.build]
-command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-storage-service/Cargo.toml"
+command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-storage-service/Cargo.toml"
 watch = ["authorworks-storage-service/src/**/*.rs", "authorworks-storage-service/Cargo.toml"]
 
 # Editor Service Component
@@ -48,10 +48,10 @@ route = "/api/editor/..."
 component = "editor-service"
 
 [component.editor-service]
-source = "authorworks-editor-service/target/wasm32-wasi/release/authorworks_editor_service.wasm"
+source = "authorworks-editor-service/target/wasm32-wasip1/release/authorworks_editor_service.wasm"
 allowed_outbound_hosts = ["postgres://neon-postgres:5432", "redis://*:6379", "http://content-service:3002"]
 [component.editor-service.build]
-command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-editor-service/Cargo.toml"
+command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-editor-service/Cargo.toml"
 watch = ["authorworks-editor-service/src/**/*.rs", "authorworks-editor-service/Cargo.toml"]
 
 # Messaging Service Component
@@ -60,10 +60,10 @@ route = "/api/messaging/..."
 component = "messaging-service"
 
 [component.messaging-service]
-source = "authorworks-messaging-service/target/wasm32-wasi/release/authorworks_messaging_service.wasm"
+source = "authorworks-messaging-service/target/wasm32-wasip1/release/authorworks_messaging_service.wasm"
 allowed_outbound_hosts = ["redis://*:6379", "wss://*"]
 [component.messaging-service.build]
-command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-messaging-service/Cargo.toml"
+command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-messaging-service/Cargo.toml"
 watch = ["authorworks-messaging-service/src/**/*.rs", "authorworks-messaging-service/Cargo.toml"]
 
 # Discovery Service Component
@@ -72,11 +72,59 @@ route = "/api/discovery/..."
 component = "discovery-service"
 
 [component.discovery-service]
-source = "authorworks-discovery-service/target/wasm32-wasi/release/authorworks_discovery_service.wasm"
+source = "authorworks-discovery-service/target/wasm32-wasip1/release/authorworks_discovery_service.wasm"
 allowed_outbound_hosts = ["http://qdrant:6334", "postgres://neon-postgres:5432"]
 [component.discovery-service.build]
-command = "cargo build --target wasm32-wasi --release --manifest-path authorworks-discovery-service/Cargo.toml"
+command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-discovery-service/Cargo.toml"
 watch = ["authorworks-discovery-service/src/**/*.rs", "authorworks-discovery-service/Cargo.toml"]
+
+# Audio Service Component
+[[trigger.http]]
+route = "/api/audio/..."
+component = "audio-service"
+
+[component.audio-service]
+source = "authorworks-audio-service/target/wasm32-wasip1/release/authorworks_audio_service.wasm"
+allowed_outbound_hosts = ["http://storage-service:3003"]
+[component.audio-service.build]
+command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-audio-service/Cargo.toml"
+watch = ["authorworks-audio-service/src/**/*.rs", "authorworks-audio-service/Cargo.toml"]
+
+# Video Service Component
+[[trigger.http]]
+route = "/api/video/..."
+component = "video-service"
+
+[component.video-service]
+source = "authorworks-video-service/target/wasm32-wasip1/release/authorworks_video_service.wasm"
+allowed_outbound_hosts = ["http://storage-service:3003"]
+[component.video-service.build]
+command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-video-service/Cargo.toml"
+watch = ["authorworks-video-service/src/**/*.rs", "authorworks-video-service/Cargo.toml"]
+
+# Graphics Service Component
+[[trigger.http]]
+route = "/api/graphics/..."
+component = "graphics-service"
+
+[component.graphics-service]
+source = "authorworks-graphics-service/target/wasm32-wasip1/release/authorworks_graphics_service.wasm"
+allowed_outbound_hosts = ["http://storage-service:3003"]
+[component.graphics-service.build]
+command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-graphics-service/Cargo.toml"
+watch = ["authorworks-graphics-service/src/**/*.rs", "authorworks-graphics-service/Cargo.toml"]
+
+# Subscription Service Component
+[[trigger.http]]
+route = "/api/subscription/..."
+component = "subscription-service"
+
+[component.subscription-service]
+source = "authorworks-subscription-service/target/wasm32-wasip1/release/authorworks_subscription_service.wasm"
+allowed_outbound_hosts = ["postgres://neon-postgres:5432", "https://api.stripe.com"]
+[component.subscription-service.build]
+command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-subscription-service/Cargo.toml"
+watch = ["authorworks-subscription-service/src/**/*.rs", "authorworks-subscription-service/Cargo.toml"]
 
 # UI Shell Static Files
 [[trigger.http]]

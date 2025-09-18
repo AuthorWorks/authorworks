@@ -1,0 +1,183 @@
+version: '3.8'
+
+services:
+  # Database Services
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: authorworks
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-authorworks123}
+      POSTGRES_DB: authorworks
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authorworks"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - authorworks
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - authorworks
+
+  # Object Storage (MinIO as S3 replacement for local dev)
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-authorworks}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-authorworks123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - authorworks
+
+  # Vector Database for Discovery Service
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - authorworks
+
+  # Spin WebAssembly Platform - All Services in One
+  authorworks-spin:
+    build:
+      context: .
+      dockerfile: Dockerfile.spin
+    environment:
+      # Database connections
+      DATABASE_URL: postgresql://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
+      POSTGRES_URL: postgresql://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
+      
+      # Redis connection
+      REDIS_URL: redis://redis:6379
+      
+      # Storage connections
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-authorworks}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-authorworks123}
+      
+      # Discovery service
+      QDRANT_URL: http://qdrant:6334
+      
+      # Security
+      JWT_SECRET: ${JWT_SECRET:-your-jwt-secret-key-change-in-production}
+      
+      # CORS settings
+      ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:8080,https://authorworks.local"
+      
+      # Stripe for subscriptions (optional)
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_placeholder}
+      
+      # Feature flags
+      ENABLE_AUDIO_SERVICE: "true"
+      ENABLE_VIDEO_SERVICE: "true"
+      ENABLE_GRAPHICS_SERVICE: "true"
+      
+    ports:
+      - "80:80"  # Spin serves on port 80 internally
+      - "8080:80"  # Alternative port mapping
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    networks:
+      - authorworks
+
+  # Optional: Traefik as reverse proxy for production-like setup
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@authorworks.local"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8081:8080"  # Traefik dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "letsencrypt_data:/letsencrypt"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.authorworks.local`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+    networks:
+      - authorworks
+    profiles:
+      - "production"  # Only start with --profile production
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  qdrant_data:
+  letsencrypt_data:
+
+networks:
+  authorworks:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
