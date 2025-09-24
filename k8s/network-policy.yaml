@@ -1,0 +1,127 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: authorworks-network-policy
+  namespace: authorworks
+spec:
+  podSelector:
+    matchLabels:
+      app: authorworks
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app: authorworks
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 5432  # PostgreSQL
+        - protocol: TCP
+          port: 6379  # Redis
+        - protocol: TCP
+          port: 9000  # MinIO
+        - protocol: TCP
+          port: 6334  # Qdrant
+        - protocol: TCP
+          port: 53    # DNS
+        - protocol: UDP
+          port: 53    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: authorworks
+      ports:
+        - protocol: TCP
+          port: 3001  # User Service
+        - protocol: TCP
+          port: 3002  # Content Service
+        - protocol: TCP
+          port: 3003  # Storage Service
+        - protocol: TCP
+          port: 3004  # Editor Service
+        - protocol: TCP
+          port: 3005  # Subscription Service
+        - protocol: TCP
+          port: 3006  # Messaging Service
+        - protocol: TCP
+          port: 3007  # Discovery Service
+        - protocol: TCP
+          port: 3008  # Audio Service
+        - protocol: TCP
+          port: 3009  # Video Service
+        - protocol: TCP
+          port: 3010  # Graphics Service
+    # Allow external API calls
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32  # Block AWS metadata service
+              - 10.0.0.0/8
+              - 192.168.0.0/16
+              - 172.16.0.0/12
+      ports:
+        - protocol: TCP
+          port: 443  # HTTPS for external APIs
+---
+# Network Policy for tenant isolation
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tenant-isolation
+  namespace: authorworks-tenant-1
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - podSelector: {}  # Allow communication within the namespace
+      ports:
+        - protocol: TCP
+          port: 80
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: authorworks-tenant-1
+      ports:
+        - protocol: TCP
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 5432  # PostgreSQL
+        - protocol: TCP
+          port: 6379  # Redis
+        - protocol: TCP
+          port: 9000  # MinIO
+        - protocol: TCP
+          port: 53    # DNS
+        - protocol: UDP
+          port: 53    # DNS
+    # Block cross-tenant communication
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 443

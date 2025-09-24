@@ -1,0 +1,239 @@
+name: Deploy AuthorWorks
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+          - homelab
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasi, wasm32-wasip1
+
+      - name: Install Spin CLI
+        run: |
+          curl -fsSL https://developer.fermyon.com/downloads/install.sh | bash
+          echo "$HOME/.spin/bin" >> $GITHUB_PATH
+
+      - name: Run verification
+        run: ./scripts/verify-deployment.sh
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasi, wasm32-wasip1
+
+      - name: Install Spin CLI
+        run: |
+          curl -fsSL https://developer.fermyon.com/downloads/install.sh | bash
+          echo "$HOME/.spin/bin" >> $GITHUB_PATH
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build SPIN application
+        run: make build-optimized
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.spin
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - user-service
+          - content-service
+          - storage-service
+          - editor-service
+          - messaging-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasi, wasm32-wasip1
+
+      - name: Run tests for ${{ matrix.service }}
+        run: |
+          cd authorworks-${{ matrix.service }}
+          cargo test --target wasm32-wasip1
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Deploy to staging
+        env:
+          KUBE_CONFIG: ${{ secrets.STAGING_KUBE_CONFIG }}
+        run: |
+          echo "$KUBE_CONFIG" | base64 -d > /tmp/kubeconfig
+          export KUBECONFIG=/tmp/kubeconfig
+          cd k8s/overlays/staging
+          kustomize build . | kubectl apply -f -
+          kubectl rollout status -n authorworks-staging spinapp/authorworks-platform
+
+  deploy-production:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name authorworks-prod --region us-east-1
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Deploy to production
+        run: |
+          cd k8s/overlays/production
+          kustomize build . | kubectl apply -f -
+          kubectl rollout status -n authorworks-prod spinapp/authorworks-platform
+
+  deploy-homelab:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'homelab'
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    environment: homelab
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.HOMELAB_SSH_KEY }}
+          SSH_HOST: ${{ secrets.HOMELAB_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
+
+      - name: Deploy to homelab
+        env:
+          SSH_HOST: ${{ secrets.HOMELAB_HOST }}
+          SSH_USER: ${{ secrets.HOMELAB_USER }}
+        run: |
+          ssh $SSH_USER@$SSH_HOST "cd /opt/authorworks && git pull && make deploy-homelab"
+
+  health-check:
+    needs: [deploy-staging, deploy-production, deploy-homelab]
+    if: always() && (needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success' || needs.deploy-homelab.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run health checks
+        run: |
+          # Determine which environment was deployed
+          if [ "${{ needs.deploy-staging.result }}" == "success" ]; then
+            URL="https://staging.authorworks.io"
+          elif [ "${{ needs.deploy-production.result }}" == "success" ]; then
+            URL="https://authorworks.io"
+          else
+            URL="https://authorworks.homelab.local"
+          fi
+
+          # Check main endpoints
+          for endpoint in "/health" "/api/user/health" "/api/content/health"; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" "$URL$endpoint")
+            if [ "$response" = "200" ]; then
+              echo "✅ $endpoint is healthy"
+            else
+              echo "❌ $endpoint returned $response"
+              exit 1
+            fi
+          done

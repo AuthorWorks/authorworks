@@ -6,14 +6,28 @@ version = "1.0.0"
 authors = ["AuthorWorks Team"]
 description = "AI-assisted content creation platform - Spin WebAssembly deployment"
 
+[application.trigger]
+type = "http"
+base = "/"
+
+[variables]
+database_url = { required = true, secret = true }
+redis_url = { required = true, secret = true }
+minio_endpoint = { default = "http://minio:9000" }
+minio_access_key = { required = true, secret = true }
+minio_secret_key = { required = true, secret = true }
+allowed_origins = { default = "https://authorworks.homelab.local" }
+log_level = { default = "info" }
+jwt_secret = { required = true, secret = true }
+
 # User Service Component
 [[trigger.http]]
 route = "/api/user/..."
 component = "user-service"
 
 [component.user-service]
-source = "authorworks-user-service/target/wasm32-wasip1p1/release/authorworks_user_service.wasm"
-allowed_outbound_hosts = ["postgres://neon-postgres:5432", "redis://*:6379"]
+source = "authorworks-user-service/target/wasm32-wasip1/release/authorworks_user_service.wasm"
+allowed_outbound_hosts = ["postgres://*:5432", "redis://*:6379", "https://*.stripe.com"]
 [component.user-service.build]
 command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-user-service/Cargo.toml"
 watch = ["authorworks-user-service/src/**/*.rs", "authorworks-user-service/Cargo.toml"]
@@ -25,7 +39,7 @@ component = "content-service"
 
 [component.content-service]
 source = "authorworks-content-service/target/wasm32-wasip1/release/authorworks_content_service.wasm"
-allowed_outbound_hosts = ["postgres://neon-postgres:5432", "redis://*:6379", "http://storage-service:3003"]
+allowed_outbound_hosts = ["postgres://*:5432", "redis://*:6379", "http://storage-service:3003", "https://api.openai.com"]
 [component.content-service.build]
 command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-content-service/Cargo.toml"
 watch = ["authorworks-content-service/src/**/*.rs", "authorworks-content-service/Cargo.toml"]
@@ -37,7 +51,7 @@ component = "storage-service"
 
 [component.storage-service]
 source = "authorworks-storage-service/target/wasm32-wasip1/release/authorworks_storage_service.wasm"
-allowed_outbound_hosts = ["postgres://neon-postgres:5432", "http://minio:9000", "https://*.s3.amazonaws.com"]
+allowed_outbound_hosts = ["postgres://*:5432", "http://minio:9000", "https://*.s3.amazonaws.com", "https://*.r2.cloudflarestorage.com"]
 [component.storage-service.build]
 command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-storage-service/Cargo.toml"
 watch = ["authorworks-storage-service/src/**/*.rs", "authorworks-storage-service/Cargo.toml"]
@@ -49,7 +63,7 @@ component = "editor-service"
 
 [component.editor-service]
 source = "authorworks-editor-service/target/wasm32-wasip1/release/authorworks_editor_service.wasm"
-allowed_outbound_hosts = ["postgres://neon-postgres:5432", "redis://*:6379", "http://content-service:3002"]
+allowed_outbound_hosts = ["postgres://*:5432", "redis://*:6379", "http://content-service:3002", "https://api.openai.com"]
 [component.editor-service.build]
 command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-editor-service/Cargo.toml"
 watch = ["authorworks-editor-service/src/**/*.rs", "authorworks-editor-service/Cargo.toml"]
@@ -73,7 +87,7 @@ component = "discovery-service"
 
 [component.discovery-service]
 source = "authorworks-discovery-service/target/wasm32-wasip1/release/authorworks_discovery_service.wasm"
-allowed_outbound_hosts = ["http://qdrant:6334", "postgres://neon-postgres:5432"]
+allowed_outbound_hosts = ["http://qdrant:6334", "postgres://*:5432", "https://api.openai.com"]
 [component.discovery-service.build]
 command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-discovery-service/Cargo.toml"
 watch = ["authorworks-discovery-service/src/**/*.rs", "authorworks-discovery-service/Cargo.toml"]
@@ -121,7 +135,7 @@ component = "subscription-service"
 
 [component.subscription-service]
 source = "authorworks-subscription-service/target/wasm32-wasip1/release/authorworks_subscription_service.wasm"
-allowed_outbound_hosts = ["postgres://neon-postgres:5432", "https://api.stripe.com"]
+allowed_outbound_hosts = ["postgres://*:5432", "https://api.stripe.com", "https://hooks.zapier.com"]
 [component.subscription-service.build]
 command = "cargo build --target wasm32-wasip1 --release --manifest-path authorworks-subscription-service/Cargo.toml"
 watch = ["authorworks-subscription-service/src/**/*.rs", "authorworks-subscription-service/Cargo.toml"]

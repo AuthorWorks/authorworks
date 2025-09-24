@@ -1,0 +1,56 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: authorworks
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - services.yaml
+  - spinapp.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - monitoring.yaml
+  - network-policy.yaml
+  - resource-quotas.yaml
+  - pod-disruption-budget.yaml
+
+commonLabels:
+  app: authorworks
+  version: v1.0.0
+  managed-by: kustomize
+
+images:
+  - name: ghcr.io/authorworks/authorworks-platform
+    newTag: latest
+
+configMapGenerator:
+  - name: authorworks-config
+    literals:
+      - LOG_LEVEL=info
+      - TELEMETRY_ENABLED=true
+      - METRICS_PORT=9090
+      - ENABLE_MULTI_TENANCY=true
+      - ENABLE_CACHING=true
+      - ENABLE_RATE_LIMITING=true
+      - RATE_LIMIT_PER_MINUTE=60
+
+patches:
+  - target:
+      kind: SpinApp
+      name: authorworks-platform
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "9090"
+          prometheus.io/path: "/metrics"
+
+replicas:
+  - name: authorworks-platform
+    count: 3
+
+# Environment-specific overlays
+bases:
+  - ../../base

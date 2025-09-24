@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: authorworks-quota
+  namespace: authorworks
+spec:
+  hard:
+    requests.cpu: "20"
+    requests.memory: "40Gi"
+    limits.cpu: "40"
+    limits.memory: "80Gi"
+    persistentvolumeclaims: "10"
+    services.loadbalancers: "2"
+    services.nodeports: "0"  # Disable NodePort for security
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: authorworks-limits
+  namespace: authorworks
+spec:
+  limits:
+  - max:
+      cpu: "4"
+      memory: "8Gi"
+    min:
+      cpu: "100m"
+      memory: "128Mi"
+    default:
+      cpu: "500m"
+      memory: "1Gi"
+    defaultRequest:
+      cpu: "250m"
+      memory: "512Mi"
+    type: Container
+  - max:
+      storage: "100Gi"
+    min:
+      storage: "1Gi"
+    type: PersistentVolumeClaim
+---
+# Tenant-specific resource quotas
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-1-quota
+  namespace: authorworks-tenant-1
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: "8Gi"
+    limits.cpu: "8"
+    limits.memory: "16Gi"
+    persistentvolumeclaims: "5"
+    pods: "20"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: tenant-1-limits
+  namespace: authorworks-tenant-1
+spec:
+  limits:
+  - max:
+      cpu: "2"
+      memory: "4Gi"
+    min:
+      cpu: "50m"
+      memory: "64Mi"
+    default:
+      cpu: "250m"
+      memory: "512Mi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "256Mi"
+    type: Container
+  - max:
+      storage: "50Gi"
+    min:
+      storage: "1Gi"
+    type: PersistentVolumeClaim
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-2-quota
+  namespace: authorworks-tenant-2
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: "8Gi"
+    limits.cpu: "8"
+    limits.memory: "16Gi"
+    persistentvolumeclaims: "5"
+    pods: "20"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: tenant-2-limits
+  namespace: authorworks-tenant-2
+spec:
+  limits:
+  - max:
+      cpu: "2"
+      memory: "4Gi"
+    min:
+      cpu: "50m"
+      memory: "64Mi"
+    default:
+      cpu: "250m"
+      memory: "512Mi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "256Mi"
+    type: Container
+  - max:
+      storage: "50Gi"
+    min:
+      storage: "1Gi"
+    type: PersistentVolumeClaim

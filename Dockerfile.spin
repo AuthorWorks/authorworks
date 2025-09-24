@@ -1,8 +1,8 @@
 # Multi-stage build for Spin WebAssembly application
-FROM rust:1.75 AS builder
+FROM rust:1.80 AS builder
 
-# Install wasm32-wasi target
-RUN rustup target add wasm32-wasi
+# Install wasm32-wasi and wasm32-wasip1 targets
+RUN rustup target add wasm32-wasi wasm32-wasip1
 
 # Install Spin CLI
 RUN curl -fsSL https://developer.fermyon.com/downloads/install.sh | bash && \
@@ -24,17 +24,22 @@ COPY authorworks-subscription-service ./authorworks-subscription-service
 COPY authorworks-ui-shell ./authorworks-ui-shell
 COPY spin.toml ./spin.toml
 
-# Build all Rust services for wasm32-wasi
-RUN cd authorworks-user-service && cargo build --target wasm32-wasi --release
-RUN cd authorworks-content-service && cargo build --target wasm32-wasi --release
-RUN cd authorworks-storage-service && cargo build --target wasm32-wasi --release
-RUN cd authorworks-editor-service && cargo build --target wasm32-wasi --release
-RUN cd authorworks-messaging-service && cargo build --target wasm32-wasi --release
-RUN cd authorworks-discovery-service && cargo build --target wasm32-wasi --release
-RUN cd authorworks-audio-service && cargo build --target wasm32-wasi --release
-RUN cd authorworks-video-service && cargo build --target wasm32-wasi --release
-RUN cd authorworks-graphics-service && cargo build --target wasm32-wasi --release
-RUN cd authorworks-subscription-service && cargo build --target wasm32-wasi --release
+# Build all Rust services for wasm32-wasip1
+RUN cd authorworks-user-service && cargo build --target wasm32-wasip1 --release
+RUN cd authorworks-content-service && cargo build --target wasm32-wasip1 --release
+RUN cd authorworks-storage-service && cargo build --target wasm32-wasip1 --release
+RUN cd authorworks-editor-service && cargo build --target wasm32-wasip1 --release
+RUN cd authorworks-messaging-service && cargo build --target wasm32-wasip1 --release
+RUN cd authorworks-discovery-service && cargo build --target wasm32-wasip1 --release
+RUN cd authorworks-audio-service && cargo build --target wasm32-wasip1 --release
+RUN cd authorworks-video-service && cargo build --target wasm32-wasip1 --release
+RUN cd authorworks-graphics-service && cargo build --target wasm32-wasip1 --release
+RUN cd authorworks-subscription-service && cargo build --target wasm32-wasip1 --release
+
+# Optimize WASM files
+RUN if command -v wasm-opt >/dev/null 2>&1; then \
+    find . -name "*.wasm" -exec wasm-opt -O3 -o {} {} \; ; \
+    fi
 
 # Build UI if needed
 RUN if [ -f "authorworks-ui-shell/package.json" ]; then \
@@ -55,16 +60,16 @@ RUN apk add --no-cache curl && \
 WORKDIR /app
 
 # Copy built WASM modules
-COPY --from=builder /app/authorworks-user-service/target/wasm32-wasi/release/*.wasm ./authorworks-user-service/target/wasm32-wasi/release/
-COPY --from=builder /app/authorworks-content-service/target/wasm32-wasi/release/*.wasm ./authorworks-content-service/target/wasm32-wasi/release/
-COPY --from=builder /app/authorworks-storage-service/target/wasm32-wasi/release/*.wasm ./authorworks-storage-service/target/wasm32-wasi/release/
-COPY --from=builder /app/authorworks-editor-service/target/wasm32-wasi/release/*.wasm ./authorworks-editor-service/target/wasm32-wasi/release/
-COPY --from=builder /app/authorworks-messaging-service/target/wasm32-wasi/release/*.wasm ./authorworks-messaging-service/target/wasm32-wasi/release/
-COPY --from=builder /app/authorworks-discovery-service/target/wasm32-wasi/release/*.wasm ./authorworks-discovery-service/target/wasm32-wasi/release/
-COPY --from=builder /app/authorworks-audio-service/target/wasm32-wasi/release/*.wasm ./authorworks-audio-service/target/wasm32-wasi/release/
-COPY --from=builder /app/authorworks-video-service/target/wasm32-wasi/release/*.wasm ./authorworks-video-service/target/wasm32-wasi/release/
-COPY --from=builder /app/authorworks-graphics-service/target/wasm32-wasi/release/*.wasm ./authorworks-graphics-service/target/wasm32-wasi/release/
-COPY --from=builder /app/authorworks-subscription-service/target/wasm32-wasi/release/*.wasm ./authorworks-subscription-service/target/wasm32-wasi/release/
+COPY --from=builder /app/authorworks-user-service/target/wasm32-wasip1/release/*.wasm ./authorworks-user-service/target/wasm32-wasip1/release/
+COPY --from=builder /app/authorworks-content-service/target/wasm32-wasip1/release/*.wasm ./authorworks-content-service/target/wasm32-wasip1/release/
+COPY --from=builder /app/authorworks-storage-service/target/wasm32-wasip1/release/*.wasm ./authorworks-storage-service/target/wasm32-wasip1/release/
+COPY --from=builder /app/authorworks-editor-service/target/wasm32-wasip1/release/*.wasm ./authorworks-editor-service/target/wasm32-wasip1/release/
+COPY --from=builder /app/authorworks-messaging-service/target/wasm32-wasip1/release/*.wasm ./authorworks-messaging-service/target/wasm32-wasip1/release/
+COPY --from=builder /app/authorworks-discovery-service/target/wasm32-wasip1/release/*.wasm ./authorworks-discovery-service/target/wasm32-wasip1/release/
+COPY --from=builder /app/authorworks-audio-service/target/wasm32-wasip1/release/*.wasm ./authorworks-audio-service/target/wasm32-wasip1/release/
+COPY --from=builder /app/authorworks-video-service/target/wasm32-wasip1/release/*.wasm ./authorworks-video-service/target/wasm32-wasip1/release/
+COPY --from=builder /app/authorworks-graphics-service/target/wasm32-wasip1/release/*.wasm ./authorworks-graphics-service/target/wasm32-wasip1/release/
+COPY --from=builder /app/authorworks-subscription-service/target/wasm32-wasip1/release/*.wasm ./authorworks-subscription-service/target/wasm32-wasip1/release/
 
 # Copy UI dist if it exists
 COPY --from=builder /app/authorworks-ui-shell/dist ./authorworks-ui-shell/dist
@@ -73,6 +78,11 @@ COPY --from=builder /app/authorworks-ui-shell/dist ./authorworks-ui-shell/dist
 COPY --from=builder /app/spin.toml ./spin.toml
 
 EXPOSE 80
+EXPOSE 9090
 
-# Run Spin application
-ENTRYPOINT ["spin", "up", "--listen", "0.0.0.0:80"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
+
+# Run Spin application with environment expansion
+ENTRYPOINT ["spin", "up", "--listen", "0.0.0.0:80", "--log-dir", "/tmp/spin-logs"]
