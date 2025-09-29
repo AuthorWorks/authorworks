@@ -16,7 +16,7 @@ redis_url = { required = true, secret = true }
 minio_endpoint = { default = "http://minio:9000" }
 minio_access_key = { required = true, secret = true }
 minio_secret_key = { required = true, secret = true }
-allowed_origins = { default = "https://authorworks.homelab.local" }
+allowed_origins = { default = "https://authorworks.leopaska.xyz" }
 log_level = { default = "info" }
 jwt_secret = { required = true, secret = true }
 

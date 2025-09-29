@@ -7,10 +7,10 @@ echo "🔨 Building AuthorWorks Spin Application"
 command -v spin >/dev/null 2>&1 || { echo "❌ spin CLI is required but not installed. Install from https://developer.fermyon.com/spin/install" >&2; exit 1; }
 command -v rustc >/dev/null 2>&1 || { echo "❌ Rust compiler is required but not installed. Install from https://rustup.rs/" >&2; exit 1; }
 
-# Check if wasm32-wasi target is installed
-if ! rustup target list --installed | grep -q wasm32-wasi; then
-    echo "📦 Installing wasm32-wasi target..."
-    rustup target add wasm32-wasi
+# Check if wasm32-wasip1 target is installed
+if ! rustup target list --installed | grep -q wasm32-wasip1; then
+    echo "📦 Installing wasm32-wasip1 target..."
+    rustup target add wasm32-wasip1
 fi
 
 # Set optimization level
@@ -21,7 +21,7 @@ echo "🏗️  Building with profile: $PROFILE"
 
 # Clean previous builds
 echo "🧹 Cleaning previous builds..."
-rm -rf target/wasm32-wasi
+rm -rf target/wasm32-wasip1
 
 # Build all services
 echo "🔧 Building all Spin services..."
@@ -43,7 +43,7 @@ for service in "${services[@]}"; do
     if [ -d "$service" ]; then
         echo "  📦 Building $service..."
         cd "$service"
-        cargo build --target wasm32-wasi --profile "$PROFILE"
+        cargo build --target wasm32-wasip1 --profile "$PROFILE"
         cd ..
     else
         echo "  ⚠️  Warning: $service directory not found, skipping..."
@@ -58,7 +58,7 @@ if [ -d "authorworks-ui-shell" ]; then
         npm install
         npm run build
     elif [ -f "Cargo.toml" ]; then
-        cargo build --target wasm32-wasi --profile "$PROFILE"
+        cargo build --target wasm32-wasip1 --profile "$PROFILE"
     fi
     cd ..
 fi
@@ -85,7 +85,7 @@ fi
 # Check for WASM files
 wasm_count=0
 for service in "${services[@]}"; do
-    wasm_file="${service}/target/wasm32-wasi/${PROFILE}/${service//-/_}.wasm"
+    wasm_file="${service}/target/wasm32-wasip1/${PROFILE}/${service//-/_}.wasm"
     if [ -f "$wasm_file" ]; then
         size=$(du -h "$wasm_file" | cut -f1)
         echo "  ✅ $service: $size"
@@ -99,7 +99,7 @@ echo ""
 echo "📊 Build Summary:"
 echo "  Services built: $wasm_count/${#services[@]}"
 echo "  Profile: $PROFILE"
-echo "  Target: wasm32-wasi"
+echo "  Target: wasm32-wasip1"
 
 if [ "$wasm_count" -eq "${#services[@]}" ]; then
     echo "✅ All services built successfully!"
@@ -120,7 +120,7 @@ if [ "$RUN_TESTS" = "true" ]; then
         if [ -d "$service" ]; then
             echo "  Testing $service..."
             cd "$service"
-            cargo test --target wasm32-wasi || echo "  ⚠️  Tests failed for $service"
+            cargo test --target wasm32-wasip1 || echo "  ⚠️  Tests failed for $service"
             cd ..
         fi
     done

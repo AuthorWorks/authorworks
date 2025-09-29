@@ -36,8 +36,10 @@ echo "🔨 Building Spin application..."
 spin build
 
 echo "📤 Pushing Spin app to registry..."
-# Assumes local registry or configured registry
-spin registry push localhost:5000/authorworks:latest
+# Use GitHub Container Registry for homelab deployment
+REGISTRY=${REGISTRY:-"ghcr.io/authorworks"}
+IMAGE_TAG=${IMAGE_TAG:-"latest"}
+spin registry push ${REGISTRY}/authorworks-platform:${IMAGE_TAG}
 
 echo "🚀 Deploying AuthorWorks application..."
 kubectl apply -f k8s/namespace.yaml
@@ -58,7 +60,7 @@ echo "📊 Application status:"
 kubectl get spinapp -n authorworks
 echo ""
 echo "🌐 Access the application at:"
-echo "  - Main: https://authorworks.homelab.local"
-echo "  - API: https://api.authorworks.homelab.local"
-echo "  - Tenant 1: https://tenant1.authorworks.homelab.local"
-echo "  - Tenant 2: https://tenant2.authorworks.homelab.local"
+echo "  - Main: https://authorworks.leopaska.xyz"
+echo "  - API: https://api.authorworks.leopaska.xyz"
+echo "  - Tenant 1: https://tenant1.authorworks.leopaska.xyz"
+echo "  - Tenant 2: https://tenant2.authorworks.leopaska.xyz"

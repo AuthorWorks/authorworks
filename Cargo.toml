@@ -11,6 +11,9 @@ members = [
     "authorworks-graphics-service",
     "authorworks-subscription-service",
 ]
+exclude = [
+    "authorworks-ui-shell",
+]
 resolver = "2"
 
 [workspace.dependencies]

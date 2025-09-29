@@ -12,11 +12,11 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - authorworks.homelab.local
-        - api.authorworks.homelab.local
+        - authorworks.leopaska.xyz
+        - api.authorworks.leopaska.xyz
       secretName: authorworks-tls
   rules:
-    - host: authorworks.homelab.local
+    - host: authorworks.leopaska.xyz
       http:
         paths:
           - path: /
@@ -26,7 +26,7 @@ spec:
                 name: authorworks-platform
                 port:
                   number: 80
-    - host: api.authorworks.homelab.local
+    - host: api.authorworks.leopaska.xyz
       http:
         paths:
           - path: /
@@ -50,10 +50,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - tenant1.authorworks.homelab.local
+        - tenant1.authorworks.leopaska.xyz
       secretName: tenant-1-tls
   rules:
-    - host: tenant1.authorworks.homelab.local
+    - host: tenant1.authorworks.leopaska.xyz
       http:
         paths:
           - path: /
@@ -76,10 +76,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - tenant2.authorworks.homelab.local
+        - tenant2.authorworks.leopaska.xyz
       secretName: tenant-2-tls
   rules:
-    - host: tenant2.authorworks.homelab.local
+    - host: tenant2.authorworks.leopaska.xyz
       http:
         paths:
           - path: /
