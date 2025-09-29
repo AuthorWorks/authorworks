@@ -1,10 +1,10 @@
-apiVersion: core.spinoperator.dev/v1alpha1
+apiVersion: core.spinkube.dev/v1alpha1
 kind: SpinApp
 metadata:
   name: authorworks-platform
   namespace: authorworks
 spec:
-  image: "ghcr.io/authorworks/authorworks-platform:latest"
+  image: "localhost:5000/authorworks-platform:latest"
   executor: containerd-shim-spin
   replicas: 3
   enableAutoscaling: true
@@ -44,13 +44,13 @@ spec:
       value: "https://authorworks.local,https://aw-ui.homelab.local"
 ---
 # Multi-tenant SpinApp for tenant-1
-apiVersion: core.spinoperator.dev/v1alpha1
+apiVersion: core.spinkube.dev/v1alpha1
 kind: SpinApp
 metadata:
   name: authorworks-tenant-1
   namespace: authorworks-tenant-1
 spec:
-  image: "ghcr.io/authorworks/authorworks-platform:latest"
+  image: "localhost:5000/authorworks-platform:latest"
   executor: containerd-shim-spin
   replicas: 2
   enableAutoscaling: true
@@ -79,13 +79,13 @@ spec:
       value: "tenant-1"
 ---
 # Multi-tenant SpinApp for tenant-2
-apiVersion: core.spinoperator.dev/v1alpha1
+apiVersion: core.spinkube.dev/v1alpha1
 kind: SpinApp
 metadata:
   name: authorworks-tenant-2
   namespace: authorworks-tenant-2
 spec:
-  image: "ghcr.io/authorworks/authorworks-platform:latest"
+  image: "localhost:5000/authorworks-platform:latest"
   executor: containerd-shim-spin
   replicas: 2
   enableAutoscaling: true
