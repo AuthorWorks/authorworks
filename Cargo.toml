@@ -6,10 +6,6 @@ members = [
     "authorworks-editor-service",
     "authorworks-messaging-service",
     "authorworks-discovery-service",
-    "authorworks-audio-service",
-    "authorworks-video-service",
-    "authorworks-graphics-service",
-    "authorworks-subscription-service",
 ]
 exclude = [
     "authorworks-ui-shell",
