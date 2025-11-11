@@ -1,0 +1,9 @@
+FROM scratch
+COPY spin.toml /spin.toml
+COPY target/wasm32-wasip1/release/authorworks_user_service.wasm /target/wasm32-wasip1/release/authorworks_user_service.wasm
+COPY target/wasm32-wasip1/release/authorworks_content_service.wasm /target/wasm32-wasip1/release/authorworks_content_service.wasm
+COPY target/wasm32-wasip1/release/authorworks_storage_service.wasm /target/wasm32-wasip1/release/authorworks_storage_service.wasm
+COPY target/wasm32-wasip1/release/authorworks_editor_service.wasm /target/wasm32-wasip1/release/authorworks_editor_service.wasm
+COPY target/wasm32-wasip1/release/authorworks_messaging_service.wasm /target/wasm32-wasip1/release/authorworks_messaging_service.wasm
+COPY target/wasm32-wasip1/release/authorworks_discovery_service.wasm /target/wasm32-wasip1/release/authorworks_discovery_service.wasm
+COPY authorworks-ui-shell/dist /authorworks-ui-shell/dist

@@ -4,10 +4,10 @@ metadata:
   name: authorworks-platform
   namespace: authorworks
 spec:
-  image: "localhost:5000/authorworks-platform:latest"
+  image: "localhost:5000/authorworks-platform:working"
   executor: containerd-shim-spin
-  replicas: 3
-  enableAutoscaling: true
+  enableAutoscaling: false
+  replicas: 1
   resources:
     limits:
       cpu: "2"
@@ -41,74 +41,4 @@ spec:
           name: authorworks-secrets
           key: minio-secret-key
     - name: ALLOWED_ORIGINS
-      value: "https://authorworks.local,https://aw-ui.homelab.local"
----
-# Multi-tenant SpinApp for tenant-1
-apiVersion: core.spinkube.dev/v1alpha1
-kind: SpinApp
-metadata:
-  name: authorworks-tenant-1
-  namespace: authorworks-tenant-1
-spec:
-  image: "localhost:5000/authorworks-platform:latest"
-  executor: containerd-shim-spin
-  replicas: 2
-  enableAutoscaling: true
-  resources:
-    limits:
-      cpu: "1"
-      memory: "2Gi"
-    requests:
-      cpu: "250m"
-      memory: "512Mi"
-  
-  variables:
-    - name: DATABASE_URL
-      valueFrom:
-        secretKeyRef:
-          name: tenant-1-secrets
-          key: database-url
-    - name: REDIS_URL
-      valueFrom:
-        secretKeyRef:
-          name: tenant-1-secrets
-          key: redis-url
-    - name: TENANT_ID
-      value: "tenant-1"
-    - name: MINIO_BUCKET_PREFIX
-      value: "tenant-1"
----
-# Multi-tenant SpinApp for tenant-2
-apiVersion: core.spinkube.dev/v1alpha1
-kind: SpinApp
-metadata:
-  name: authorworks-tenant-2
-  namespace: authorworks-tenant-2
-spec:
-  image: "localhost:5000/authorworks-platform:latest"
-  executor: containerd-shim-spin
-  replicas: 2
-  enableAutoscaling: true
-  resources:
-    limits:
-      cpu: "1"
-      memory: "2Gi"
-    requests:
-      cpu: "250m"
-      memory: "512Mi"
-  
-  variables:
-    - name: DATABASE_URL
-      valueFrom:
-        secretKeyRef:
-          name: tenant-2-secrets
-          key: database-url
-    - name: REDIS_URL
-      valueFrom:
-        secretKeyRef:
-          name: tenant-2-secrets
-          key: redis-url
-    - name: TENANT_ID
-      value: "tenant-2"
-    - name: MINIO_BUCKET_PREFIX
-      value: "tenant-2"
+      value: "https://authorworks.leopaska.xyz"

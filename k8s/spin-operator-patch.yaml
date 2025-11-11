@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spin-operator-controller-manager
+  namespace: spin-operator
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        image: ghcr.io/spinkube/spin-operator:v0.4.0

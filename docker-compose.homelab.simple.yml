@@ -1,0 +1,30 @@
+version: '3.8'
+
+networks:
+  llm_network:
+    external: true
+
+services:
+  # Main application - serves UI and proxies API
+  authorworks-app:
+    image: nginx:alpine
+    container_name: authorworks-app
+    volumes:
+      - ./authorworks-ui-shell/dist:/usr/share/nginx/html:ro
+      - ./nginx-simple.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - llm_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.authorworks.rule=Host(`authorworks.${DOMAIN:-leopaska.xyz}`)"
+      - "traefik.http.routers.authorworks.entrypoints=websecure"
+      - "traefik.http.routers.authorworks.tls.certresolver=letsencrypt"
+      - "traefik.http.services.authorworks.loadbalancer.server.port=80"
+      - "traefik.http.routers.authorworks.service=authorworks"
+      # Authelia middleware for authentication
+      - "traefik.http.routers.authorworks.middlewares=authelia-leopaska@docker"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

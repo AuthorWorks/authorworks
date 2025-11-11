@@ -1,0 +1,13 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: spin-operator-mutating-webhook-configuration
+  annotations:
+    cert-manager.io/inject-ca-from: spin-operator/webhook-server-cert
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration  
+metadata:
+  name: spin-operator-validating-webhook-configuration
+  annotations:
+    cert-manager.io/inject-ca-from: spin-operator/webhook-server-cert

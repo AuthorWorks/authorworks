@@ -1,0 +1,48 @@
+networks:
+  llm_network:
+    external: true
+
+services:
+  # Main AuthorWorks application - book generation platform
+  authorworks-platform:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: authorworks-platform
+    environment:
+      - RUST_LOG=info
+      - HOST=0.0.0.0
+      - PORT=3000
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+      - MINIO_ENDPOINT=http://minio-leopaska:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ALLOWED_ORIGINS=https://authorworks.${DOMAIN}
+    volumes:
+      - authorworks-books:/app/output
+      - authorworks-logs:/app/logs
+    networks:
+      - llm_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.authorworks.rule=Host(`authorworks.${DOMAIN}`)"
+      - "traefik.http.routers.authorworks.entrypoints=websecure"
+      - "traefik.http.routers.authorworks.tls.certresolver=letsencrypt"
+      - "traefik.http.services.authorworks.loadbalancer.server.port=3000"
+      # Authelia authentication
+      - "traefik.http.routers.authorworks.middlewares=authelia-leopaska@docker"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  authorworks-books:
+    driver: local
+  authorworks-logs:
+    driver: local
