@@ -21,7 +21,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: authorworks-platform
+                name: authorworks-frontend
                 port:
                   number: 80
     - host: api.authorworks.leopaska.xyz
