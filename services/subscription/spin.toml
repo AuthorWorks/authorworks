@@ -1,0 +1,17 @@
+spin_manifest_version = 2
+
+[application]
+name = "authorworks-subscription-service"
+version = "0.1.0"
+authors = ["AuthorWorks Team"]
+description = "Billing and payment processing service"
+
+[[trigger.http]]
+route = "/..."
+component = "subscription-service"
+
+[component.subscription-service]
+source = "target/wasm32-wasi/release/authorworks_subscription_service.wasm"
+allowed_outbound_hosts = ["*"]
+[component.subscription-service.build]
+command = "cargo build --target wasm32-wasi --release"

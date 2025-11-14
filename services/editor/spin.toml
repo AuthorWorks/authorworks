@@ -1,0 +1,17 @@
+spin_manifest_version = 2
+
+[application]
+name = "authorworks-editor-service"
+version = "0.1.0"
+authors = ["AuthorWorks Team"]
+description = "Collaborative editing service"
+
+[[trigger.http]]
+route = "/..."
+component = "editor-service"
+
+[component.editor-service]
+source = "target/wasm32-wasi/release/authorworks_editor_service.wasm"
+allowed_outbound_hosts = ["*"]
+[component.editor-service.build]
+command = "cargo build --target wasm32-wasi --release"
