@@ -1,0 +1,17 @@
+spin_manifest_version = 2
+
+[application]
+name = "authorworks-discovery-service"
+version = "0.1.0"
+authors = ["AuthorWorks Team"]
+description = "Search and recommendations service"
+
+[[trigger.http]]
+route = "/..."
+component = "discovery-service"
+
+[component.discovery-service]
+source = "target/wasm32-wasi/release/authorworks_discovery_service.wasm"
+allowed_outbound_hosts = ["*"]
+[component.discovery-service.build]
+command = "cargo build --target wasm32-wasi --release"

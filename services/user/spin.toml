@@ -1,0 +1,17 @@
+spin_manifest_version = 2
+
+[application]
+name = "authorworks-user-service"
+version = "0.1.0"
+authors = ["AuthorWorks Team"]
+description = "User authentication and profile management service"
+
+[[trigger.http]]
+route = "/..."
+component = "user-service"
+
+[component.user-service]
+source = "target/wasm32-wasi/release/authorworks_user_service.wasm"
+allowed_outbound_hosts = ["*"]
+[component.user-service.build]
+command = "cargo build --target wasm32-wasi --release"

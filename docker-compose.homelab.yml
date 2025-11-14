@@ -9,12 +9,16 @@ services:
     container_name: authorworks-nginx
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./authorworks-ui-shell/dist:/usr/share/nginx/html:ro
+      - ./frontend/landing/leptos-app/dist:/usr/share/nginx/html:ro
     depends_on:
       - user-service
       - content-service
       - storage-service
       - editor-service
+      - messaging-service
+      - subscription-service
+      - discovery-service
+      - media-service
     networks:
       - llm_network
     healthcheck:
@@ -44,13 +48,13 @@ services:
 
   user-service:
     build:
-      context: ./authorworks-user-service
-      dockerfile: Dockerfile.simple
+      context: ./services/user
+      dockerfile: Dockerfile
     container_name: authorworks-user-service
     environment:
       HOST: 0.0.0.0
       SERVICE_PORT: 3001
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@2f74558da076_neon-postgres-leopaska:5432/authorworks
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
       ALLOWED_ORIGINS: https://authorworks.${DOMAIN}
       JWT_SECRET: ${JWT_SECRET}
@@ -65,7 +69,7 @@ services:
 
   content-service:
     build:
-      context: ./authorworks-content-service
+      context: ./services/content
       dockerfile: Dockerfile
     container_name: authorworks-content-service
     environment:
@@ -75,6 +79,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
       STORAGE_SERVICE_URL: http://storage-service:3003
       ALLOWED_ORIGINS: https://authorworks.${DOMAIN}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     networks:
       - llm_network
     healthcheck:
@@ -86,7 +91,7 @@ services:
 
   storage-service:
     build:
-      context: ./authorworks-storage-service
+      context: ./services/storage
       dockerfile: Dockerfile
     container_name: authorworks-storage-service
     environment:
@@ -108,7 +113,7 @@ services:
 
   editor-service:
     build:
-      context: ./authorworks-editor-service
+      context: ./services/editor
       dockerfile: Dockerfile
     container_name: authorworks-editor-service
     environment:
@@ -122,6 +127,88 @@ services:
       - llm_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  subscription-service:
+    build:
+      context: ./services/subscription
+      dockerfile: Dockerfile
+    container_name: authorworks-subscription-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3005
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+      ALLOWED_ORIGINS: https://authorworks.${DOMAIN}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_placeholder}
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  messaging-service:
+    build:
+      context: ./services/messaging
+      dockerfile: Dockerfile
+    container_name: authorworks-messaging-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3006
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+      ALLOWED_ORIGINS: https://authorworks.${DOMAIN}
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  discovery-service:
+    build:
+      context: ./services/discovery
+      dockerfile: Dockerfile
+    container_name: authorworks-discovery-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3007
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+      ALLOWED_ORIGINS: https://authorworks.${DOMAIN}
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3007/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  media-service:
+    build:
+      context: ./services/media
+      dockerfile: Dockerfile
+    container_name: authorworks-media-service
+    environment:
+      HOST: 0.0.0.0
+      SERVICE_PORT: 3008
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      STORAGE_SERVICE_URL: http://storage-service:3003
+      ALLOWED_ORIGINS: https://authorworks.${DOMAIN}
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
       interval: 30s
       timeout: 5s
       retries: 3

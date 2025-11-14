@@ -1,0 +1,17 @@
+spin_manifest_version = 2
+
+[application]
+name = "authorworks-media-service"
+version = "0.1.0"
+authors = ["AuthorWorks Team"]
+description = "Media transformation service (audio, video, graphics)"
+
+[[trigger.http]]
+route = "/..."
+component = "media-service"
+
+[component.media-service]
+source = "target/wasm32-wasi/release/authorworks_media_service.wasm"
+allowed_outbound_hosts = ["*"]
+[component.media-service.build]
+command = "cargo build --target wasm32-wasi --release"

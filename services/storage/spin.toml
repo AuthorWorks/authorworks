@@ -1,0 +1,17 @@
+spin_manifest_version = 2
+
+[application]
+name = "authorworks-storage-service"
+version = "0.1.0"
+authors = ["AuthorWorks Team"]
+description = "File storage and S3 integration service"
+
+[[trigger.http]]
+route = "/..."
+component = "storage-service"
+
+[component.storage-service]
+source = "target/wasm32-wasi/release/authorworks_storage_service.wasm"
+allowed_outbound_hosts = ["*"]
+[component.storage-service.build]
+command = "cargo build --target wasm32-wasi --release"
