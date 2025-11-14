@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>author.works</title>
+    <link data-trunk rel="rust" data-bin="leptos-app" data-wasm-opt="z" />
+    <link data-trunk rel="scss" href="style/main.scss" />
+    <link data-trunk rel="copy-dir" href="assets" />
+    <style>
+      :root {
+        --primary: #00ffff;
+        --secondary: #003333;
+        --accent: #00cccc;
+        --background: #000000;
+        --text: #00ffff;
+      }
+      
+      html, body {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        background-color: var(--background);
+        color: var(--text);
+        font-family: 'Courier New', Courier, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html> 

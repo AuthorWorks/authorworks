@@ -1,0 +1,110 @@
+name: Sync Back to Main Repository
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'specs/**'
+      - 'docs/**'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  sync-back:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+        with:
+          repository: authorworks/authorworks
+          path: main-repo
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Determine repository type
+        id: repo-type
+        run: |
+          REPO_NAME=$(basename "$GITHUB_REPOSITORY")
+          echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+          REPO_TYPE=$(echo "$REPO_NAME" | sed 's/authorworks-//')
+          echo "repo_type=$REPO_TYPE" >> $GITHUB_OUTPUT
+
+      - name: Sync specifications back to main repository
+        run: |
+          REPO_TYPE="${{ steps.repo-type.outputs.repo_type }}"
+          
+          # Create destination directories if they don't exist
+          mkdir -p main-repo/specs/1-infrastructure
+          mkdir -p main-repo/specs/2-services
+          mkdir -p main-repo/specs/3-business-logic
+          mkdir -p main-repo/specs/4-ui
+          mkdir -p main-repo/docs
+          
+          # Copy specifications back based on repository type and directory structure
+          if [ -d "specs/1-infrastructure" ]; then
+            cp -r specs/1-infrastructure/* main-repo/specs/1-infrastructure/ 2>/dev/null || true
+          fi
+          
+          if [ -d "specs/2-services" ]; then
+            cp -r specs/2-services/* main-repo/specs/2-services/ 2>/dev/null || true
+          fi
+          
+          if [ -d "specs/3-business-logic" ]; then
+            cp -r specs/3-business-logic/* main-repo/specs/3-business-logic/ 2>/dev/null || true
+          fi
+          
+          if [ -d "specs/4-ui" ]; then
+            cp -r specs/4-ui/* main-repo/specs/4-ui/ 2>/dev/null || true
+          fi
+          
+          # Copy any service-specific files from the root of specs
+          case "$REPO_TYPE" in
+            *-"service")
+              SERVICE_NAME=$(echo "$REPO_TYPE" | sed 's/-service//')
+              # Find the correct service spec file
+              if [ -f "specs/service-spec.md" ]; then
+                # Determine the destination file name based on the service name
+                DEST_FILE=$(find main-repo/specs/2-services -name "*-$SERVICE_NAME-service.md" 2>/dev/null || echo "main-repo/specs/2-services/2-$SERVICE_NAME-service.md")
+                cp "specs/service-spec.md" "$DEST_FILE"
+              fi
+              
+              # Copy business logic specs if they exist in the root
+              for bl_spec in specs/business-logic-*.md; do
+                if [ -f "$bl_spec" ]; then
+                  # Extract the original filename - use basename to get just the filename
+                  ORIG_NAME=$(basename "$bl_spec" | sed 's/business-logic-//')
+                  cp "$bl_spec" "main-repo/specs/3-business-logic/$ORIG_NAME"
+                fi
+              done
+              ;;
+          esac
+          
+          # Copy all documentation
+          if [ -d "docs" ]; then
+            cp -r docs/* main-repo/docs/ 2>/dev/null || true
+          fi
+
+          # Copy operations.md file if it exists
+          if [ -f "operations.md" ]; then
+            cp operations.md main-repo/ 2>/dev/null || true
+          fi
+
+      - name: Commit and push changes if any
+        run: |
+          cd main-repo
+          if git status --porcelain | grep -q .; then
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            git add .
+            git commit -m "Sync specifications from ${{ steps.repo-type.outputs.repo_name }}"
+            git push
+          else
+            echo "No changes to commit"
+          fi

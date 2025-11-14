@@ -1,0 +1,24 @@
+[package]
+name = "authorworks-discovery-service"
+version = "0.1.0"
+edition = "2021"
+description = "Discovery service for AuthorWorks platform"
+
+[dependencies]
+spin-sdk = "2.2.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bytes = "1.8"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
