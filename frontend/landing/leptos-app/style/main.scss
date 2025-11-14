@@ -1,0 +1,250 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --primary: #00ffff;
+    --secondary: #003333;
+    --accent: #00cccc;
+    --background: #000000;
+    --text: #00ffff;
+    --max-width: 1200px;
+    --header-height: 80px;
+    --section-spacing: 120px;
+}
+
+body {
+    background-color: var(--background);
+    color: var(--text);
+    font-family: 'Courier New', Courier, monospace;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+.terminal-container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+.terminal-header {
+    height: var(--header-height);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    backdrop-filter: blur(10px);
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 100;
+}
+
+.terminal-nav {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 2rem;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    ul {
+        display: flex;
+        gap: 3rem;
+        list-style: none;
+    }
+
+    a {
+        color: var(--text);
+        text-decoration: none;
+        transition: color 0.3s ease;
+        font-size: 1.1rem;
+
+        &:hover {
+            color: var(--accent);
+        }
+    }
+}
+
+main {
+    padding-top: var(--header-height);
+}
+
+.content-container {
+    min-height: calc(100vh - var(--header-height));
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 8rem 2rem;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    gap: 2rem;
+    text-align: center;
+
+    .prose {
+        text-align: center;
+        
+        ul {
+            display: inline-block;
+            text-align: left;
+            margin: 0 auto;
+        }
+    }
+
+    form {
+        max-width: 600px;
+        width: 100%;
+        margin: 0 auto;
+        
+        .text-left {
+            text-align: left;
+        }
+    }
+}
+
+.terminal-box {
+    background: rgba(0, 51, 51, 0.1);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-align: center;
+
+    &:hover {
+        background: rgba(0, 51, 51, 0.2);
+        transform: translateY(-2px);
+    }
+
+    h2 {
+        font-size: 1.5rem;
+        margin-bottom: 0.75rem;
+        color: var(--primary);
+    }
+
+    p {
+        font-size: 1rem;
+        line-height: 1.4;
+    }
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5rem;
+    width: 100%;
+    max-width: var(--max-width);
+    margin: 3rem auto;
+    padding: 1rem;
+}
+
+.space-y-16 > * + * {
+    margin-top: 5rem;
+}
+
+.matrix-fade-in {
+    opacity: 0;
+    animation: fadeIn 1s ease-out forwards;
+}
+
+@keyframes fadeIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(30px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+.btn-primary {
+    background: transparent;
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--accent);
+        color: var(--background);
+    }
+}
+
+form {
+    input, textarea {
+        width: 100%;
+        padding: 1rem;
+        background: rgba(0, 51, 51, 0.2);
+        border: 1px solid var(--accent);
+        color: var(--text);
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        font-family: inherit;
+
+        &:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.1);
+        }
+    }
+}
+
+@media (max-width: 768px) {
+    :root {
+        --header-height: 60px;
+    }
+
+    .terminal-nav {
+        padding: 0 1rem;
+        
+        ul {
+            gap: 1.5rem;
+        }
+    }
+
+    .content-container {
+        padding: 4rem 1rem;
+        min-height: auto;
+        
+        &:not(:first-child) {
+            margin-top: 1rem;
+            padding-top: 2rem;
+        }
+    }
+
+    .grid {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+        padding: 1rem;
+    }
+
+    .terminal-box {
+        padding: 1.25rem;
+        margin: 0.25rem;
+    }
+
+    .space-y-16 > * + * {
+        margin-top: 3rem;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .content-container {
+        padding: 6rem 2rem;
+    }
+
+    .grid {
+        gap: 2rem;
+    }
+}
+
+html {
+    scroll-behavior: smooth;
+}

@@ -1,0 +1,41 @@
+[package]
+name = "book-generator"
+version = "0.1.0"
+edition = "2021"
+description = "Shared AI-powered book generation library for AuthorWorks platform"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+async-trait = "0.1"
+futures-core = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# LLM clients
+anthropic = "0.2"
+async-openai = "0.26"
+ollama-rs = "0.2"
+langchain-rust = "4.6"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Utilities
+chrono = "0.4"
+dotenv = "0.15"
+once_cell = "1.20"
+tracing = "0.1"
+
+# Book rendering
+mdbook = "0.4"
+
+[lib]
+name = "book_generator"
+path = "src/lib.rs"

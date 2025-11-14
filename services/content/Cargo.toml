@@ -1,0 +1,12 @@
+[package]
+name = "authorworks-content-service"
+version = "0.1.0"
+edition = "2021"
+description = "Content management service for AuthorWorks platform"
+
+[dependencies]
+spin-sdk = "2.2.0"
+anyhow = "1.0"
+
+[lib]
+crate-type = ["cdylib"]

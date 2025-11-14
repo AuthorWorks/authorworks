@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #00ffff;
+  --secondary: #003333;
+  --accent: #00cccc;
+  --background: #000000;
+  --text: #00ffff;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+body {
+  @apply bg-background text-text;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.prose {
+  @apply max-w-none;
+}
+
+.btn-primary {
+  @apply border-2 border-primary bg-transparent text-primary px-6 py-2 
+         hover:bg-primary hover:text-background transition-all duration-300;
+}
+
+.nav-link {
+  @apply hover:text-accent transition-colors;
+}
+
+.matrix-fade-in {
+  opacity: 0;
+  animation: fadeIn 0.8s ease-out forwards;
+}
+
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.8s ease-out;
+}
+
+.scroll-reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}

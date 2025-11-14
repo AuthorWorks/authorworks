@@ -1,25 +1,52 @@
 [workspace]
 members = [
-    "authorworks-user-service",
-    "authorworks-content-service",
-    "authorworks-storage-service",
-    "authorworks-editor-service",
-    "authorworks-messaging-service",
-    "authorworks-discovery-service",
+    "core/book-generator",
+    "services/user",
+    "services/content",
+    "services/storage",
+    "services/editor",
+    "services/messaging",
+    "services/subscription",
+    "services/discovery",
+    "services/media",
 ]
 exclude = [
-    "authorworks-ui-shell",
+    "frontend",
+    "archive",
 ]
 resolver = "2"
 
 [workspace.dependencies]
+# Spin SDK for serverless WebAssembly
 spin-sdk = "2.2.0"
+
+# Error handling
 anyhow = "1.0"
+thiserror = "2.0"
+
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# Utilities
 bytes = "1.5"
 base64 = "0.21"
 chrono = { version = "0.4", default-features = false }
+
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+async-trait = "0.1"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# LLM clients
+anthropic = "0.2"
+async-openai = "0.26"
+ollama-rs = "0.2"
+
+# Logging
+tracing = "0.1"
 
 [profile.release]
 opt-level = "z"     # Optimize for size
