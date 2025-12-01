@@ -3,31 +3,15 @@ kind: Kustomization
 
 namespace: authorworks
 
-bases:
-  - ../../
+resources:
+- ../../base
 
-namePrefix: homelab-
+# Note: SpinApp replicas managed in base spinapp.yaml
 
-commonLabels:
-  environment: homelab
-
-patchesStrategicMerge:
-  - spinapp-patch.yaml
-  - ingress-patch.yaml
-
-configMapGenerator:
-  - name: homelab-config
-    behavior: merge
-    literals:
-      - ENVIRONMENT=homelab
-      - DOMAIN=homelab.local
-      - LOG_LEVEL=debug
-      - ENABLE_DEBUG_ENDPOINTS=true
-
-replicas:
-  - name: authorworks-platform
-    count: 3
+labels:
+- pairs:
+    environment: homelab
 
 images:
-  - name: ghcr.io/authorworks/authorworks-platform
-    newTag: homelab-latest
+- name: ghcr.io/authorworks/authorworks-platform
+  newTag: latest

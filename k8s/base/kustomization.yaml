@@ -46,11 +46,3 @@ patches:
           prometheus.io/scrape: "true"
           prometheus.io/port: "9090"
           prometheus.io/path: "/metrics"
-
-replicas:
-  - name: authorworks-platform
-    count: 3
-
-# Environment-specific overlays
-bases:
-  - ../../base

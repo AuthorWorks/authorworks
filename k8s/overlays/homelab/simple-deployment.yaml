@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authorworks-server
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authorworks
+  template:
+    metadata:
+      labels:
+        app: authorworks
+    spec:
+      containers:
+      - name: authorworks
+        image: k3d-registry.localhost:5555/authorworks:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "3000"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authorworks-server
+  namespace: authorworks
+spec:
+  selector:
+    app: authorworks
+  ports:
+  - port: 80
+    targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authorworks-ingress
+  namespace: authorworks
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: authorworks.leopaska.xyz
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: authorworks-server
+            port:
+              number: 80
+

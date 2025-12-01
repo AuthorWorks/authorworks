@@ -1,0 +1,3 @@
+[submodule "authorworks-engine"]
+	path = authorworks-engine
+	url = git@github.com:AuthorWorks/authorworks-engine.git

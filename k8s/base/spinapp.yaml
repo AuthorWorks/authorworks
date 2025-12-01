@@ -4,7 +4,7 @@ metadata:
   name: authorworks-platform
   namespace: authorworks
 spec:
-  image: "localhost:5000/authorworks-platform:working"
+  image: "k3d-registry.localhost:5555/authorworks:latest"
   executor: containerd-shim-spin
   enableAutoscaling: false
   replicas: 1
@@ -15,7 +15,7 @@ spec:
     requests:
       cpu: "500m"
       memory: "1Gi"
-  
+
   # Environment variables for all components
   variables:
     - name: DATABASE_URL

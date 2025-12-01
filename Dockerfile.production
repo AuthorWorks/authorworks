@@ -6,55 +6,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the book generator library (legacy-src is the actual working code)
-COPY authorworks-user-service/legacy-src/ ./book_generator/src/
-COPY authorworks-user-service/Cargo.toml ./book_generator/
+# Copy server source
+COPY server/ ./server/
+COPY Cargo.toml ./
 
-# Create HTTP API wrapper
-COPY server-wrapper/ ./server/
-
-# Update book_generator Cargo.toml to build as library
-RUN cd book_generator && \
-    cat > Cargo.toml << 'EOF'
-[package]
-name = "book-generator"
-version = "1.0.0"
-edition = "2021"
-
-[lib]
-name = "book_generator"
-path = "src/lib.rs"
-
-[[bin]]
-name = "book-generator-cli"
-path = "src/main.rs"
-
-[dependencies]
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tracing = "0.1"
-tracing-subscriber = "0.3"
-chrono = { version = "0.4", features = ["serde"] }
-reqwest = { version = "0.12", features = ["json"] }
-anyhow = "1"
-thiserror = "1"
-md-5 = "0.10"
-EOF
-
-# Build the server with book generator
+# Build the server
 RUN cd server && cargo build --release
 
 FROM debian:bookworm-slim
 WORKDIR /app
 
-# Install runtime dependencies  
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
-# Copy binary and UI
-COPY --from=builder /app/server/target/release/authorworks-api /app/server
-COPY authorworks-ui-shell/dist /app/public
+# Copy binary and create public directory
+COPY --from=builder /app/server/target/release/authorworks-server /app/server
+RUN mkdir -p /app/public && echo '<!DOCTYPE html><html><body><h1>AuthorWorks API</h1></body></html>' > /app/public/index.html
 
 # Create directories for book generation
 RUN mkdir -p /app/output /app/logs && \

@@ -15,13 +15,13 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 WORKDIR /app
 
-# Install runtime dependencies  
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 # Copy binary
 COPY --from=builder /app/target/release/authorworks-server /app/server
-COPY authorworks-ui-shell/dist /app/public
+RUN mkdir -p /app/public && echo '<!DOCTYPE html><html><body><h1>AuthorWorks Server</h1></body></html>' > /app/public/index.html
 
 # Create non-root user
 RUN useradd -u 10001 -r -s /sbin/nologin appuser && \

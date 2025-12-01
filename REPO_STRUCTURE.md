@@ -1,29 +1,28 @@
 AuthorWorks Umbrella Repository
 
 Overview
-- This directory serves as the umbrella repo containing all AuthorWorks sub-repositories as git submodules.
-- Use scripts/plan-submodules.sh to see mapping of local folders to their remotes.
-- Use scripts/convert-to-submodules.sh --apply to convert nested repos into submodules (creates backups of current local folders).
+- This directory serves as the umbrella repo for the AuthorWorks platform.
+- Contains the authorworks-engine submodule with specifications and core engine functionality.
+- Individual service repositories have been archived in favor of a consolidated architecture.
 
-Included submodules (recommended)
-- authorworks-user-service
-- authorworks-content-service
-- authorworks-storage-service
-- authorworks-editor-service
-- authorworks-messaging-service
-- authorworks-discovery-service
-- authorworks-subscription-service
-- authorworks-audio-service
-- authorworks-video-service
-- authorworks-graphics-service
-- authorworks-ui-shell
-- authorworks-platform
-- authorworks-docs
+Active Submodules
+- authorworks-engine: Core engine, specifications, and shared functionality
 
-Excluded/legacy
-- author_works/: Legacy experiments (Next.js/Leptos). Keep as-is or archive.
+Archived Repositories (kept locally for reference)
+- authorworks-user-service (archived)
+- authorworks-content-service (archived)
+- authorworks-storage-service (archived)
+- authorworks-editor-service (archived)
+- authorworks-messaging-service (archived)
+- authorworks-discovery-service (archived)
+- authorworks-subscription-service (archived)
+- authorworks-audio-service (archived)
+- authorworks-video-service (archived)
+- authorworks-graphics-service (archived)
+- authorworks-ui-shell (archived)
+- authorworks-platform (archived)
+- authorworks-docs (archived)
+- author_works (archived - legacy experiments)
 
-No redundancies
-- After converting to submodules, remove any duplicate local clones and rely on the submodule content.
-- Ensure each submodule points to the correct upstream origin.
+Note: The archived service directories remain in the local repository for reference but are no longer active submodules. The platform architecture has been consolidated into the main repository and engine submodule.
 
