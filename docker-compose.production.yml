@@ -1,48 +1,435 @@
+# AuthorWorks Platform - EC2 Production Deployment
+# Single EC2 instance with Docker containers for MVP production
+#
+# External AWS Services:
+#   - RDS PostgreSQL (DATABASE_URL)
+#   - ElastiCache Redis (REDIS_URL)
+#   - S3 for storage
+#   - SES for email (or external SMTP)
+#   - CloudWatch for logging (via docker log driver)
+#
+# Internal containers:
+#   - Logto (authentication)
+#   - RabbitMQ (message queue)
+#   - Elasticsearch (search)
+#   - All 8 microservices
+#   - Background workers
+#   - Nginx (API gateway + SSL termination)
+
 networks:
-  llm_network:
-    external: true
+  authorworks:
+    driver: bridge
 
 services:
-  # Main AuthorWorks application - book generation platform
-  authorworks-platform:
-    build:
-      context: .
-      dockerfile: Dockerfile.production
-    container_name: authorworks-platform
+  #==========================================================================
+  # INFRASTRUCTURE (containers for MVP - can migrate to managed services)
+  #==========================================================================
+  
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: authorworks-rabbitmq
+    restart: unless-stopped
     environment:
-      - RUST_LOG=info
-      - HOST=0.0.0.0
-      - PORT=3000
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
-      - MINIO_ENDPOINT=http://minio-leopaska:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - ALLOWED_ORIGINS=https://authorworks.${DOMAIN}
+      RABBITMQ_DEFAULT_USER: authorworks
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     volumes:
-      - authorworks-books:/app/output
-      - authorworks-logs:/app/logs
-    networks:
-      - llm_network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.authorworks.rule=Host(`authorworks.${DOMAIN}`)"
-      - "traefik.http.routers.authorworks.entrypoints=websecure"
-      - "traefik.http.routers.authorworks.tls.certresolver=letsencrypt"
-      - "traefik.http.services.authorworks.loadbalancer.server.port=3000"
-      # Authelia authentication
-      - "traefik.http.routers.authorworks.middlewares=authelia-leopaska@docker"
+      - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/rabbitmq
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: rabbitmq
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: authorworks-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/elasticsearch
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: elasticsearch
+
+  #==========================================================================
+  # AUTHENTICATION - Logto
+  #==========================================================================
+  
+  logto:
+    image: svhd/logto:latest
+    container_name: authorworks-logto
     restart: unless-stopped
+    environment:
+      - TRUST_PROXY_HEADER=1
+      - DB_URL=${LOGTO_DATABASE_URL}
+      - ENDPOINT=https://auth.${DOMAIN}
+      - ADMIN_ENDPOINT=https://auth-admin.${DOMAIN}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/logto
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: logto
+
+  #==========================================================================
+  # BACKGROUND WORKERS
+  #==========================================================================
+  
+  content-worker:
+    build:
+      context: ./workers/content
+      dockerfile: Dockerfile
+    container_name: authorworks-content-worker
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - AWS_REGION=${AWS_REGION}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/workers
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: content-worker
+
+  media-worker:
+    build:
+      context: ./workers/media
+      dockerfile: Dockerfile
+    container_name: authorworks-media-worker
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      - DATABASE_URL=${DATABASE_URL}
+      - S3_BUCKET=${S3_BUCKET}
+      - AWS_REGION=${AWS_REGION}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/workers
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: media-worker
+
+  #==========================================================================
+  # APPLICATION SERVICES
+  #==========================================================================
+  
+  user-service:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    container_name: authorworks-user
+    restart: unless-stopped
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=${DATABASE_URL}
+      - SPIN_VARIABLE_REDIS_URL=${REDIS_URL}
+      - SPIN_VARIABLE_JWT_SECRET=${JWT_SECRET}
+      - SPIN_VARIABLE_LOGTO_ENDPOINT=http://logto:3001
+      - SPIN_VARIABLE_LOGTO_CLIENT_ID=${LOGTO_CLIENT_ID}
+      - SPIN_VARIABLE_LOGTO_CLIENT_SECRET=${LOGTO_CLIENT_SECRET}
+      - SPIN_VARIABLE_LOGTO_REDIRECT_URI=https://${DOMAIN}/auth/callback
+      - SPIN_VARIABLE_SMTP_HOST=${SMTP_HOST:-email-smtp.us-west-2.amazonaws.com}
+      - SPIN_VARIABLE_SMTP_PORT=${SMTP_PORT:-587}
+      - SPIN_VARIABLE_SMTP_USER=${SES_SMTP_USER:-}
+      - SPIN_VARIABLE_SMTP_PASS=${SES_SMTP_PASS:-}
+    depends_on:
+      logto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/services
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: user-service
+
+  content-service:
+    build:
+      context: ./services/content
+      dockerfile: Dockerfile
+    container_name: authorworks-content
+    restart: unless-stopped
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=${DATABASE_URL}
+      - SPIN_VARIABLE_REDIS_URL=${REDIS_URL}
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      - SPIN_VARIABLE_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/services
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: content-service
+
+  storage-service:
+    build:
+      context: ./services/storage
+      dockerfile: Dockerfile
+    container_name: authorworks-storage
+    restart: unless-stopped
+    environment:
+      - SPIN_VARIABLE_S3_BUCKET=${S3_BUCKET}
+      - SPIN_VARIABLE_S3_REGION=${AWS_REGION}
+      - SPIN_VARIABLE_REDIS_URL=${REDIS_URL}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/services
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: storage-service
+
+  editor-service:
+    build:
+      context: ./services/editor
+      dockerfile: Dockerfile
+    container_name: authorworks-editor
+    restart: unless-stopped
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=${DATABASE_URL}
+      - SPIN_VARIABLE_REDIS_URL=${REDIS_URL}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/services
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: editor-service
+
+  subscription-service:
+    build:
+      context: ./services/subscription
+      dockerfile: Dockerfile
+    container_name: authorworks-subscription
+    restart: unless-stopped
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=${DATABASE_URL}
+      - SPIN_VARIABLE_REDIS_URL=${REDIS_URL}
+      - SPIN_VARIABLE_STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - SPIN_VARIABLE_STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/services
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: subscription-service
+
+  messaging-service:
+    build:
+      context: ./services/messaging
+      dockerfile: Dockerfile
+    container_name: authorworks-messaging
+    restart: unless-stopped
+    environment:
+      - SPIN_VARIABLE_REDIS_URL=${REDIS_URL}
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/services
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: messaging-service
+
+  discovery-service:
+    build:
+      context: ./services/discovery
+      dockerfile: Dockerfile
+    container_name: authorworks-discovery
+    restart: unless-stopped
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=${DATABASE_URL}
+      - SPIN_VARIABLE_REDIS_URL=${REDIS_URL}
+      - SPIN_VARIABLE_ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/services
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: discovery-service
+
+  media-service:
+    build:
+      context: ./services/media
+      dockerfile: Dockerfile
+    container_name: authorworks-media
+    restart: unless-stopped
+    environment:
+      - SPIN_VARIABLE_S3_BUCKET=${S3_BUCKET}
+      - SPIN_VARIABLE_S3_REGION=${AWS_REGION}
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/services
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: media-service
+
+  #==========================================================================
+  # API GATEWAY WITH SSL
+  #==========================================================================
+  
+  api-gateway:
+    image: nginx:alpine
+    container_name: authorworks-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.production.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/landing/leptos-app/dist:/usr/share/nginx/html:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:ro
+    depends_on:
+      - user-service
+      - content-service
+      - storage-service
+      - editor-service
+      - subscription-service
+      - messaging-service
+      - discovery-service
+      - media-service
+      - logto
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - authorworks
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /authorworks/nginx
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-stream-prefix: nginx
+
+  #==========================================================================
+  # SSL CERTIFICATE RENEWAL
+  #==========================================================================
+  
+  certbot:
+    image: certbot/certbot
+    container_name: authorworks-certbot
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - authorworks
+
+#==========================================================================
+# VOLUMES
+#==========================================================================
 
 volumes:
-  authorworks-books:
-    driver: local
-  authorworks-logs:
-    driver: local
+  rabbitmq_data:
+  elasticsearch_data:
+  certbot_webroot:

@@ -1,22 +1,333 @@
+# AuthorWorks Platform - Homelab K3s Deployment
+# Uses existing infrastructure on llm_network:
+#   - PostgreSQL: neon-postgres-leopaska:5432
+#   - Redis: redis-nd-leopaska:6379
+#   - MinIO: minio-leopaska:9000
+#   - Traefik: reverse proxy
+#   - Authelia: additional SSO
+#
+# New services added:
+#   - Logto (authentication)
+#   - RabbitMQ (message queue)
+#   - Elasticsearch (search)
+#   - Loki + Promtail (logging)
+#   - All 8 microservices
+#   - Background workers
+
 networks:
   llm_network:
     external: true
 
 services:
-  # API Gateway
+  #==========================================================================
+  # ADDITIONAL INFRASTRUCTURE (not on existing homelab)
+  #==========================================================================
+  
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: authorworks-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: authorworks
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-authorworks123}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - llm_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rabbitmq.rule=Host(`rabbitmq.authorworks.${DOMAIN}`)"
+      - "traefik.http.routers.rabbitmq.middlewares=authelia-cloudflare@file"
+      - "traefik.http.services.rabbitmq.loadbalancer.server.port=15672"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: authorworks-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - llm_network
+
+  #==========================================================================
+  # AUTHENTICATION - Logto
+  #==========================================================================
+  
+  logto:
+    image: svhd/logto:latest
+    container_name: authorworks-logto
+    environment:
+      - TRUST_PROXY_HEADER=1
+      - DB_URL=postgres://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/logto
+      - ENDPOINT=https://auth.authorworks.${DOMAIN}
+      - ADMIN_ENDPOINT=https://auth-admin.authorworks.${DOMAIN}
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      # Main Logto endpoint (public)
+      - "traefik.http.routers.logto.rule=Host(`auth.authorworks.${DOMAIN}`)"
+      - "traefik.http.routers.logto.entrypoints=web,websecure"
+      - "traefik.http.routers.logto.service=logto-service"
+      - "traefik.http.services.logto-service.loadbalancer.server.port=3001"
+      # Admin console (protected by Authelia)
+      - "traefik.http.routers.logto-admin.rule=Host(`auth-admin.authorworks.${DOMAIN}`)"
+      - "traefik.http.routers.logto-admin.entrypoints=web,websecure"
+      - "traefik.http.routers.logto-admin.middlewares=authelia-cloudflare@file"
+      - "traefik.http.routers.logto-admin.service=logto-admin-service"
+      - "traefik.http.services.logto-admin-service.loadbalancer.server.port=3002"
+
+  #==========================================================================
+  # OBSERVABILITY - Logging (Prometheus/Grafana assumed to exist)
+  #==========================================================================
+  
+  loki:
+    image: grafana/loki:latest
+    container_name: authorworks-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - llm_network
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: authorworks-promtail
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/promtail.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - llm_network
+
+  #==========================================================================
+  # BACKGROUND WORKERS
+  #==========================================================================
+  
+  content-worker:
+    build:
+      context: ./workers/content
+      dockerfile: Dockerfile
+    container_name: authorworks-content-worker
+    environment:
+      - RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - MINIO_ENDPOINT=http://minio-leopaska:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - llm_network
+
+  media-worker:
+    build:
+      context: ./workers/media
+      dockerfile: Dockerfile
+    container_name: authorworks-media-worker
+    environment:
+      - RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      - MINIO_ENDPOINT=http://minio-leopaska:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - llm_network
+
+  #==========================================================================
+  # APPLICATION SERVICES
+  #==========================================================================
+  
+  user-service:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    container_name: authorworks-user
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+      - SPIN_VARIABLE_JWT_SECRET=${JWT_SECRET}
+      - SPIN_VARIABLE_LOGTO_ENDPOINT=http://logto:3001
+      - SPIN_VARIABLE_LOGTO_CLIENT_ID=${LOGTO_CLIENT_ID}
+      - SPIN_VARIABLE_LOGTO_CLIENT_SECRET=${LOGTO_CLIENT_SECRET}
+      - SPIN_VARIABLE_LOGTO_REDIRECT_URI=https://authorworks.${DOMAIN}/auth/callback
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  content-service:
+    build:
+      context: ./services/content
+      dockerfile: Dockerfile
+    container_name: authorworks-content
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+      - SPIN_VARIABLE_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  storage-service:
+    build:
+      context: ./services/storage
+      dockerfile: Dockerfile
+    container_name: authorworks-storage
+    environment:
+      - SPIN_VARIABLE_MINIO_ENDPOINT=http://minio-leopaska:9000
+      - SPIN_VARIABLE_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - SPIN_VARIABLE_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  editor-service:
+    build:
+      context: ./services/editor
+      dockerfile: Dockerfile
+    container_name: authorworks-editor
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  subscription-service:
+    build:
+      context: ./services/subscription
+      dockerfile: Dockerfile
+    container_name: authorworks-subscription
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+      - SPIN_VARIABLE_STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - SPIN_VARIABLE_STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  messaging-service:
+    build:
+      context: ./services/messaging
+      dockerfile: Dockerfile
+    container_name: authorworks-messaging
+    environment:
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  discovery-service:
+    build:
+      context: ./services/discovery
+      dockerfile: Dockerfile
+    container_name: authorworks-discovery
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@neon-postgres-leopaska:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD}@redis-nd-leopaska:6379
+      - SPIN_VARIABLE_ELASTICSEARCH_URL=http://elasticsearch:9200
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  media-service:
+    build:
+      context: ./services/media
+      dockerfile: Dockerfile
+    container_name: authorworks-media
+    environment:
+      - SPIN_VARIABLE_MINIO_ENDPOINT=http://minio-leopaska:9000
+      - SPIN_VARIABLE_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - SPIN_VARIABLE_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+    networks:
+      - llm_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  #==========================================================================
+  # API GATEWAY
+  #==========================================================================
+  
   api-gateway:
     image: nginx:alpine
     container_name: authorworks-nginx
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      # Note: UI assets should be built and placed in a dist/ directory
-      # - ./dist:/usr/share/nginx/html:ro
-    # Note: Service dependencies removed - services are now consolidated
-    # depends_on:
-    #   - user-service
-    #   - content-service
-    #   - storage-service
-    #   - editor-service
+      - ./frontend/landing/leptos-app/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - user-service
+      - content-service
+      - storage-service
+      - editor-service
+      - subscription-service
+      - messaging-service
+      - discovery-service
+      - media-service
     networks:
       - llm_network
     healthcheck:
@@ -27,26 +338,30 @@ services:
       start_period: 10s
     labels:
       - "traefik.enable=true"
-
-      # Public landing page route (no auth, highest priority)
+      # Public landing page (no auth)
       - "traefik.http.routers.authorworks-public.rule=Host(`authorworks.${DOMAIN}`) && PathPrefix(`/`)"
       - "traefik.http.routers.authorworks-public.entrypoints=web,websecure"
       - "traefik.http.routers.authorworks-public.priority=10"
       - "traefik.http.routers.authorworks-public.service=authorworks-service"
-
-      # Protected app routes (with auth, lower priority)
+      # Auth routes (no Authelia - handled by Logto)
+      - "traefik.http.routers.authorworks-auth.rule=Host(`authorworks.${DOMAIN}`) && PathPrefix(`/auth`)"
+      - "traefik.http.routers.authorworks-auth.entrypoints=web,websecure"
+      - "traefik.http.routers.authorworks-auth.priority=25"
+      - "traefik.http.routers.authorworks-auth.service=authorworks-service"
+      # Protected app/API routes (with Authelia fallback)
       - "traefik.http.routers.authorworks-app.rule=Host(`authorworks.${DOMAIN}`) && (PathPrefix(`/app`) || PathPrefix(`/api`))"
       - "traefik.http.routers.authorworks-app.entrypoints=web,websecure"
       - "traefik.http.routers.authorworks-app.middlewares=authelia-cloudflare@file"
       - "traefik.http.routers.authorworks-app.priority=20"
       - "traefik.http.routers.authorworks-app.service=authorworks-service"
-
-      # Service definition
+      # Service
       - "traefik.http.services.authorworks-service.loadbalancer.server.port=8080"
 
-  # Note: Individual service repositories have been archived.
-  # Services are now consolidated in the main repository and authorworks-engine submodule.
-  # Service implementations should be built from the consolidated codebase.
-  #
-  # Previous service definitions (user-service, content-service, storage-service, editor-service)
-  # have been removed. See authorworks-engine for specifications and core functionality.
+#==========================================================================
+# VOLUMES
+#==========================================================================
+
+volumes:
+  rabbitmq_data:
+  elasticsearch_data:
+  loki_data:

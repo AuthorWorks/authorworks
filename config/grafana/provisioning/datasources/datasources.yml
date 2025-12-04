@@ -1,0 +1,49 @@
+# Grafana datasource provisioning
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+
+  - name: PostgreSQL
+    type: postgres
+    url: postgres:5432
+    database: authorworks
+    user: authorworks
+    secureJsonData:
+      password: ${DB_PASSWORD}
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    editable: false
+
+  - name: Redis
+    type: redis-datasource
+    url: redis://redis:6379
+    editable: false
+
+  - name: Elasticsearch
+    type: elasticsearch
+    url: http://elasticsearch:9200
+    database: "[authorworks-]YYYY.MM.DD"
+    jsonData:
+      esVersion: "8.0.0"
+      timeField: "@timestamp"
+      logMessageField: message
+      logLevelField: level
+    editable: false
+

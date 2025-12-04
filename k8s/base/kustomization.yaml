@@ -8,6 +8,7 @@ resources:
   - secrets.yaml
   - services.yaml
   - spinapp.yaml
+  - logto.yaml
   - ingress.yaml
   - hpa.yaml
   - monitoring.yaml
@@ -34,6 +35,9 @@ configMapGenerator:
       - ENABLE_CACHING=true
       - ENABLE_RATE_LIMITING=true
       - RATE_LIMIT_PER_MINUTE=60
+      - logto-endpoint=https://auth.authorworks.leopaska.xyz
+      - logto-admin-endpoint=https://auth-admin.authorworks.leopaska.xyz
+      - logto-redirect-uri=https://authorworks.leopaska.xyz/auth/callback
 
 patches:
   - target:

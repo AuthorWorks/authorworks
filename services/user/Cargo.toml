@@ -2,13 +2,23 @@
 name = "authorworks-user-service"
 version = "0.1.0"
 edition = "2021"
-description = "User authentication and profile management service"
+description = "User authentication and profile management service with Logto integration"
 
 [dependencies]
-spin-sdk = "2.2.0"
-anyhow = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+spin-sdk = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+jsonwebtoken = { workspace = true }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+hex = { workspace = true }
+url = { workspace = true }
+http = { workspace = true }
+thiserror = { workspace = true }
 
 [lib]
 crate-type = ["cdylib"]

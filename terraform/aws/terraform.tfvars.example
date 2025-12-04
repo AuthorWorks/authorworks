@@ -1,0 +1,61 @@
+# AuthorWorks AWS Infrastructure - Example Variables
+# Copy this file to terraform.tfvars and fill in your values
+
+#=============================================================================
+# General
+#=============================================================================
+
+aws_region   = "us-west-2"
+environment  = "production"
+project_name = "authorworks"
+
+#=============================================================================
+# Networking
+#=============================================================================
+
+vpc_cidr             = "10.0.0.0/16"
+private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+public_subnet_cidrs  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+
+#=============================================================================
+# EKS
+#=============================================================================
+
+cluster_name        = "authorworks-eks"
+cluster_version     = "1.28"
+node_instance_types = ["t3.large", "t3.xlarge"]
+node_min_size       = 2
+node_max_size       = 10
+node_desired_size   = 3
+
+#=============================================================================
+# RDS
+#=============================================================================
+
+db_instance_class = "db.t3.medium"
+db_password       = "CHANGE_ME_STRONG_PASSWORD"  # Use a strong password!
+
+#=============================================================================
+# ElastiCache
+#=============================================================================
+
+redis_node_type  = "cache.t3.medium"
+redis_auth_token = "CHANGE_ME_STRONG_TOKEN"  # Use a strong token!
+
+#=============================================================================
+# Application Secrets
+#=============================================================================
+
+jwt_secret          = "CHANGE_ME_GENERATE_WITH_OPENSSL"  # openssl rand -base64 32
+logto_client_id     = "authorworks-app"
+logto_client_secret = "CHANGE_ME_FROM_LOGTO_CONSOLE"
+stripe_secret_key   = "sk_live_..."  # Optional, for payments
+anthropic_api_key   = "sk-ant-..."   # Optional, for content generation
+
+#=============================================================================
+# Domain
+#=============================================================================
+
+domain          = "authorworks.io"
+certificate_arn = "arn:aws:acm:us-west-2:123456789012:certificate/..."  # ACM certificate ARN
+

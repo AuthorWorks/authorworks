@@ -1,17 +1,37 @@
 version: '3.8'
 
+# AuthorWorks Platform - Local Development
+# Complete stack with all required services
+#
+# Run: docker compose up -d
+# Access:
+#   - App: http://localhost:8080
+#   - Logto: http://localhost:3001
+#   - Logto Admin: http://localhost:3002
+#   - Grafana: http://localhost:3000
+#   - RabbitMQ: http://localhost:15672
+#   - MinIO Console: http://localhost:9001
+#   - Mailpit: http://localhost:8025
+
 services:
-  # Database Services
+  #==========================================================================
+  # INFRASTRUCTURE - Database & Storage
+  #==========================================================================
+  
   postgres:
     image: postgres:16-alpine
+    container_name: authorworks-postgres
     environment:
       POSTGRES_USER: authorworks
       POSTGRES_PASSWORD: ${DB_PASSWORD:-authorworks123}
       POSTGRES_DB: authorworks
+      POSTGRES_MULTIPLE_DATABASES: logto
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./scripts/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/00-init-dbs.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U authorworks"]
       interval: 10s
@@ -22,7 +42,8 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes
+    container_name: authorworks-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     volumes:
@@ -35,28 +56,9 @@ services:
     networks:
       - authorworks
 
-  # Message Queue
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    environment:
-      RABBITMQ_DEFAULT_USER: authorworks
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-authorworks123}
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - authorworks
-
-  # Object Storage (MinIO as S3 replacement for local dev)
   minio:
     image: minio/minio:latest
+    container_name: authorworks-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-authorworks}
@@ -74,18 +76,32 @@ services:
     networks:
       - authorworks
 
-  # Note: Individual service repositories have been archived.
-  # Services are now consolidated in the main repository and authorworks-engine submodule.
-  # Service implementations should be built from the consolidated codebase.
-  #
-  # Previous service definitions (user-service, content-service, storage-service,
-  # editor-service, subscription-service, messaging-service, discovery-service,
-  # audio-service, video-service, graphics-service) have been removed.
-  # See authorworks-engine for specifications and core functionality.
+  #==========================================================================
+  # INFRASTRUCTURE - Message Queue & Search
+  #==========================================================================
+  
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: authorworks-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: authorworks
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-authorworks123}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - authorworks
 
-  # Search Engine
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: authorworks-elasticsearch
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -95,20 +111,383 @@ services:
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
       retries: 5
     networks:
       - authorworks
 
-  # API Gateway (using Nginx for simplicity, can be replaced with Kong/Traefik)
+  #==========================================================================
+  # AUTHENTICATION - Logto
+  #==========================================================================
+  
+  logto:
+    image: svhd/logto:latest
+    container_name: authorworks-logto
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - TRUST_PROXY_HEADER=1
+      - DB_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/logto
+      - ENDPOINT=http://localhost:3001
+      - ADMIN_ENDPOINT=http://localhost:3002
+    ports:
+      - "3001:3001"
+      - "3002:3002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - authorworks
+
+  #==========================================================================
+  # EMAIL - Development Mail Server
+  #==========================================================================
+  
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: authorworks-mailpit
+    ports:
+      - "8025:8025"   # Web UI
+      - "1025:1025"   # SMTP
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_DATABASE: /data/mailpit.db
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    volumes:
+      - mailpit_data:/data
+    networks:
+      - authorworks
+
+  #==========================================================================
+  # OBSERVABILITY - Monitoring & Logging
+  #==========================================================================
+  
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: authorworks-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - authorworks
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: authorworks-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-authorworks123}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - authorworks
+
+  loki:
+    image: grafana/loki:latest
+    container_name: authorworks-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki_data:/loki
+    networks:
+      - authorworks
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: authorworks-promtail
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/promtail.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - authorworks
+
+  #==========================================================================
+  # BACKGROUND JOBS - Worker for AI Generation
+  #==========================================================================
+  
+  content-worker:
+    build:
+      context: ./workers/content
+      dockerfile: Dockerfile
+    container_name: authorworks-content-worker
+    environment:
+      - RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+      - DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
+      - REDIS_URL=redis://redis:6379
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-authorworks}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-authorworks123}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - authorworks
+
+  media-worker:
+    build:
+      context: ./workers/media
+      dockerfile: Dockerfile
+    container_name: authorworks-media-worker
+    environment:
+      - RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+      - DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-authorworks}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-authorworks123}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - authorworks
+
+  #==========================================================================
+  # APPLICATION SERVICES - AuthorWorks Microservices
+  #==========================================================================
+  
+  user-service:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    container_name: authorworks-user
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://redis:6379
+      - SPIN_VARIABLE_JWT_SECRET=${JWT_SECRET:-authorworks-dev-secret}
+      - SPIN_VARIABLE_LOGTO_ENDPOINT=http://logto:3001
+      - SPIN_VARIABLE_LOGTO_CLIENT_ID=${LOGTO_CLIENT_ID:-authorworks-app}
+      - SPIN_VARIABLE_LOGTO_CLIENT_SECRET=${LOGTO_CLIENT_SECRET:-}
+      - SPIN_VARIABLE_LOGTO_REDIRECT_URI=http://localhost:8080/auth/callback
+      - SPIN_VARIABLE_SMTP_HOST=mailpit
+      - SPIN_VARIABLE_SMTP_PORT=1025
+    ports:
+      - "3101:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      logto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+
+  content-service:
+    build:
+      context: ./services/content
+      dockerfile: Dockerfile
+    container_name: authorworks-content
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://redis:6379
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+      - SPIN_VARIABLE_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    ports:
+      - "3102:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+
+  storage-service:
+    build:
+      context: ./services/storage
+      dockerfile: Dockerfile
+    container_name: authorworks-storage
+    environment:
+      - SPIN_VARIABLE_MINIO_ENDPOINT=http://minio:9000
+      - SPIN_VARIABLE_MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-authorworks}
+      - SPIN_VARIABLE_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-authorworks123}
+      - SPIN_VARIABLE_REDIS_URL=redis://redis:6379
+    ports:
+      - "3103:80"
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+
+  editor-service:
+    build:
+      context: ./services/editor
+      dockerfile: Dockerfile
+    container_name: authorworks-editor
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://redis:6379
+    ports:
+      - "3104:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+
+  subscription-service:
+    build:
+      context: ./services/subscription
+      dockerfile: Dockerfile
+    container_name: authorworks-subscription
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://redis:6379
+      - SPIN_VARIABLE_STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - SPIN_VARIABLE_STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+    ports:
+      - "3105:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+
+  messaging-service:
+    build:
+      context: ./services/messaging
+      dockerfile: Dockerfile
+    container_name: authorworks-messaging
+    environment:
+      - SPIN_VARIABLE_REDIS_URL=redis://redis:6379
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+    ports:
+      - "3106:80"
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+
+  discovery-service:
+    build:
+      context: ./services/discovery
+      dockerfile: Dockerfile
+    container_name: authorworks-discovery
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://redis:6379
+      - SPIN_VARIABLE_ELASTICSEARCH_URL=http://elasticsearch:9200
+    ports:
+      - "3107:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+
+  media-service:
+    build:
+      context: ./services/media
+      dockerfile: Dockerfile
+    container_name: authorworks-media
+    environment:
+      - SPIN_VARIABLE_MINIO_ENDPOINT=http://minio:9000
+      - SPIN_VARIABLE_MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-authorworks}
+      - SPIN_VARIABLE_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-authorworks123}
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+    ports:
+      - "3108:80"
+    depends_on:
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - authorworks
+
+  #==========================================================================
+  # API GATEWAY
+  #==========================================================================
+  
   api-gateway:
     image: nginx:alpine
+    container_name: authorworks-gateway
     ports:
       - "8080:8080"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/landing/leptos-app/dist:/usr/share/nginx/html:ro
     depends_on:
       - user-service
       - content-service
@@ -117,9 +496,7 @@ services:
       - subscription-service
       - messaging-service
       - discovery-service
-      - audio-service
-      - video-service
-      - graphics-service
+      - media-service
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 10s
@@ -128,18 +505,9 @@ services:
     networks:
       - authorworks
 
-  # UI Shell (Dioxus Web)
-  ui-shell:
-    build: ./authorworks-ui-shell
-    environment:
-      API_GATEWAY_URL: http://api-gateway:8080
-    ports:
-      - "3000:3000"
-    depends_on:
-      api-gateway:
-        condition: service_healthy
-    networks:
-      - authorworks
+#==========================================================================
+# VOLUMES
+#==========================================================================
 
 volumes:
   postgres_data:
@@ -147,6 +515,14 @@ volumes:
   rabbitmq_data:
   minio_data:
   elasticsearch_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  mailpit_data:
+
+#==========================================================================
+# NETWORKS
+#==========================================================================
 
 networks:
   authorworks:

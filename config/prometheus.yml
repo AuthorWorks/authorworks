@@ -1,0 +1,68 @@
+# Prometheus configuration for AuthorWorks
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # API Gateway
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['api-gateway:8080']
+    metrics_path: /metrics
+
+  # AuthorWorks Services
+  - job_name: 'authorworks-services'
+    static_configs:
+      - targets:
+          - 'user-service:80'
+          - 'content-service:80'
+          - 'storage-service:80'
+          - 'editor-service:80'
+          - 'subscription-service:80'
+          - 'messaging-service:80'
+          - 'discovery-service:80'
+          - 'media-service:80'
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  # Infrastructure
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq:15692']
+
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch:9200']
+    metrics_path: /_prometheus/metrics
+
+  # Logto
+  - job_name: 'logto'
+    static_configs:
+      - targets: ['logto:3001']
+    metrics_path: /api/status
+
+  # Loki
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
+

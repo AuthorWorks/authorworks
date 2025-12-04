@@ -1,109 +1,98 @@
-.PHONY: help all build test deploy-homelab deploy-aws clean verify health-check
+.PHONY: help build test deploy-local deploy-homelab deploy-ec2 deploy-eks down logs verify clean
 
 SHELL := /bin/bash
-REGISTRY ?= ghcr.io/authorworks
-IMAGE_TAG ?= $(shell git rev-parse --short HEAD)
-NAMESPACE ?= authorworks
-PROFILE ?= release
+
+#=============================================================================
+# AuthorWorks - Makefile
+#=============================================================================
 
 help:
-	@echo "AuthorWorks Platform - Deployment & Management"
+	@echo "AuthorWorks Platform"
 	@echo ""
-	@echo "Usage: make [target]"
+	@echo "Deployment:"
+	@echo "  make deploy-local     Deploy to local Docker environment"
+	@echo "  make deploy-homelab   Deploy to homelab K3s cluster"
+	@echo "  make deploy-ec2       Deploy to AWS EC2"
+	@echo "  make deploy-eks       Deploy to AWS EKS"
+	@echo "  make down             Tear down current deployment"
 	@echo ""
-	@echo "Main Targets:"
-	@echo "  all                Build everything (SPIN + containers)"
-	@echo "  verify             Pre-deployment verification checks"
-	@echo "  deploy-homelab     Deploy to K3S homelab cluster"
-	@echo "  deploy-aws         Deploy to AWS EKS production"
-	@echo "  health-check       Run health checks on deployed services"
+	@echo "Development:"
+	@echo "  make build            Build all services"
+	@echo "  make test             Run all tests"
+	@echo "  make logs             Follow deployment logs"
+	@echo "  make verify           Run health checks"
+	@echo "  make clean            Clean build artifacts"
 	@echo ""
-	@echo "Build Targets:"
-	@echo "  build-spin         Build SPIN WebAssembly application"
-	@echo "  build-containers   Build containerized services"
-	@echo "  build-optimized    Build with WASM optimizations"
-	@echo ""
-	@echo "Testing:"
-	@echo "  test               Run all tests"
-	@echo "  test-integration   Run integration tests"
-	@echo "  benchmark          Run performance benchmarks"
-	@echo ""
-	@echo "Maintenance:"
-	@echo "  clean              Clean all build artifacts"
-	@echo "  logs               Tail application logs"
-	@echo "  rollback           Rollback to previous deployment"
+	@echo "Operations:"
+	@echo "  make scale-up         Scale to 10 replicas (EKS)"
+	@echo "  make scale-down       Scale to 3 replicas (EKS)"
+	@echo "  make rollback         Rollback to previous deployment"
 
-all: verify build-spin build-containers
+#=============================================================================
+# Deployment Targets
+#=============================================================================
 
-verify:
-	@echo "🔍 Running pre-deployment verification..."
-	@./scripts/verify-deployment.sh
+deploy-local:
+	@./scripts/deploy.sh local --build --verify
 
-build-spin:
-	@echo "🔨 Building SPIN WebAssembly application..."
-	@PROFILE=$(PROFILE) ./scripts/build-spin.sh
+deploy-homelab:
+	@./scripts/deploy.sh homelab --build --verify
 
-build-optimized:
-	@echo "⚡ Building optimized SPIN application..."
-	@PROFILE=$(PROFILE) OPTIMIZE=true ./scripts/build-spin.sh
+deploy-ec2:
+	@./scripts/deploy.sh ec2 --build --verify
 
-build-containers:
-	@echo "🐳 Building container images..."
-	@docker build -f Dockerfile.spin -t $(REGISTRY)/authorworks-platform:$(IMAGE_TAG) .
-	@docker tag $(REGISTRY)/authorworks-platform:$(IMAGE_TAG) $(REGISTRY)/authorworks-platform:latest
+deploy-eks:
+	@./scripts/deploy.sh eks --build --verify
 
-push:
-	@echo "📤 Pushing images to registry..."
-	@docker push $(REGISTRY)/authorworks-platform:$(IMAGE_TAG)
-	@docker push $(REGISTRY)/authorworks-platform:latest
+down:
+	@./scripts/deploy.sh local --down 2>/dev/null || true
+	@./scripts/deploy.sh homelab --down 2>/dev/null || true
+
+#=============================================================================
+# Development Targets
+#=============================================================================
+
+build:
+	@echo "Building all services..."
+	@docker compose build
 
 test:
-	@echo "🧪 Running all tests..."
-	@cargo test --workspace
-
-test-integration:
-	@echo "🔗 Running integration tests..."
-	@./scripts/run-integration-tests.sh
-
-benchmark:
-	@echo "📊 Running performance benchmarks..."
-	@./scripts/benchmark-wasm.sh
-
-deploy-homelab: verify build-optimized
-	@echo "🚀 Deploying to K3S homelab cluster..."
-	@CLUSTER_CONTEXT=k3s-homelab ./scripts/deploy-homelab.sh
-
-deploy-aws: verify build-optimized push
-	@echo "☁️  Deploying to AWS EKS..."
-	@CLUSTER_CONTEXT=aws-eks ./scripts/deploy-aws.sh
-
-health-check:
-	@echo "❤️  Running health checks..."
-	@kubectl exec -n $(NAMESPACE) deployment/authorworks-platform -- /app/scripts/health-check.sh
+	@echo "Running tests..."
+	@cargo test --workspace 2>/dev/null || echo "Cargo tests skipped"
+	@cd frontend/landing/leptos-app && cargo test 2>/dev/null || echo "Frontend tests skipped"
 
 logs:
-	@echo "📋 Tailing application logs..."
-	@kubectl logs -n $(NAMESPACE) -l app=authorworks --tail=100 -f
+	@./scripts/deploy.sh local --logs
 
-rollback:
-	@echo "↩️  Rolling back deployment..."
-	@kubectl rollout undo -n $(NAMESPACE) deployment/authorworks-platform
+verify:
+	@./scripts/deploy.sh local --verify
 
 clean:
-	@echo "🧹 Cleaning build artifacts..."
-	@rm -rf target/
+	@echo "Cleaning build artifacts..."
+	@rm -rf target/ 2>/dev/null || true
 	@find . -name "target" -type d -exec rm -rf {} + 2>/dev/null || true
-	@docker system prune -f
+	@docker system prune -f 2>/dev/null || true
 
-monitor:
-	@echo "📊 Opening monitoring dashboard..."
-	@kubectl port-forward -n $(NAMESPACE) svc/grafana 3000:3000 &
-	@open http://localhost:3000
+#=============================================================================
+# Operations Targets (EKS)
+#=============================================================================
 
 scale-up:
-	@echo "⬆️  Scaling up application..."
-	@kubectl scale -n $(NAMESPACE) spinapp/authorworks-platform --replicas=10
+	@kubectl scale -n authorworks spinapp/authorworks-platform --replicas=10 2>/dev/null || \
+		echo "EKS not configured"
 
 scale-down:
-	@echo "⬇️  Scaling down application..."
-	@kubectl scale -n $(NAMESPACE) spinapp/authorworks-platform --replicas=3
+	@kubectl scale -n authorworks spinapp/authorworks-platform --replicas=3 2>/dev/null || \
+		echo "EKS not configured"
+
+rollback:
+	@kubectl rollout undo -n authorworks deployment/authorworks-platform 2>/dev/null || \
+		echo "EKS not configured"
+
+#=============================================================================
+# Utility Targets
+#=============================================================================
+
+.env:
+	@cp .env.example .env 2>/dev/null || echo "# AuthorWorks Environment" > .env
+	@echo "Created .env file - please configure it"

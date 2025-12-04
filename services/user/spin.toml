@@ -4,7 +4,17 @@ spin_manifest_version = 2
 name = "authorworks-user-service"
 version = "0.1.0"
 authors = ["AuthorWorks Team"]
-description = "User authentication and profile management service"
+description = "User authentication and profile management service with Logto integration"
+
+[variables]
+database_url = { required = true }
+redis_url = { required = true }
+jwt_secret = { required = true }
+password_salt = { default = "authorworks-salt" }
+logto_endpoint = { default = "http://localhost:3001" }
+logto_client_id = { default = "authorworks-app" }
+logto_client_secret = { required = false, default = "" }
+logto_redirect_uri = { default = "http://localhost:8080/auth/callback" }
 
 [[trigger.http]]
 route = "/..."
@@ -12,6 +22,26 @@ component = "user-service"
 
 [component.user-service]
 source = "target/wasm32-wasi/release/authorworks_user_service.wasm"
-allowed_outbound_hosts = ["*"]
+allowed_outbound_hosts = [
+    "http://localhost:*",
+    "https://localhost:*",
+    "http://logto:*",
+    "https://*.authorworks.leopaska.xyz",
+    "postgres://*:5432",
+    "redis://*:6379"
+]
+key_value_stores = ["default"]
+
+[component.user-service.variables]
+database_url = "{{ database_url }}"
+redis_url = "{{ redis_url }}"
+jwt_secret = "{{ jwt_secret }}"
+password_salt = "{{ password_salt }}"
+logto_endpoint = "{{ logto_endpoint }}"
+logto_client_id = "{{ logto_client_id }}"
+logto_client_secret = "{{ logto_client_secret }}"
+logto_redirect_uri = "{{ logto_redirect_uri }}"
+
 [component.user-service.build]
 command = "cargo build --target wasm32-wasi --release"
+watch = ["src/**/*.rs", "Cargo.toml"]
