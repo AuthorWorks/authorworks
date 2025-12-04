@@ -1,0 +1,47 @@
+import { NextRequest, NextResponse } from 'next/server'
+
+const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://localhost:3002'
+
+export async function GET(request: NextRequest) {
+  try {
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json(
+        { error: 'Missing authorization header' },
+        { status: 401 }
+      )
+    }
+
+    const token = authHeader.substring(7)
+
+    // Validate token with Logto
+    const userInfoResponse = await fetch(`${LOGTO_ENDPOINT}/oidc/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    if (!userInfoResponse.ok) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      )
+    }
+
+    const userInfo = await userInfoResponse.json()
+
+    return NextResponse.json({
+      id: userInfo.sub,
+      name: userInfo.name || userInfo.username || 'User',
+      email: userInfo.email,
+      avatar: userInfo.picture,
+    })
+  } catch (error) {
+    console.error('Auth check error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+

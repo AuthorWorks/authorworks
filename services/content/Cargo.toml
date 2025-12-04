@@ -2,11 +2,16 @@
 name = "authorworks-content-service"
 version = "0.1.0"
 edition = "2021"
-description = "Content management service for AuthorWorks platform"
+description = "Content management and AI generation service"
 
 [dependencies]
-spin-sdk = "2.2.0"
-anyhow = "1.0"
+spin-sdk = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
 
 [lib]
 crate-type = ["cdylib"]
