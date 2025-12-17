@@ -16,10 +16,11 @@ resources:
   - resource-quotas.yaml
   - pod-disruption-budget.yaml
 
-commonLabels:
-  app: authorworks
-  version: v1.0.0
-  managed-by: kustomize
+labels:
+- pairs:
+    app: authorworks
+    version: v1.0.0
+    managed-by: kustomize
 
 images:
   - name: ghcr.io/authorworks/authorworks-platform

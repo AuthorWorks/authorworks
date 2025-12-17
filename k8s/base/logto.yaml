@@ -148,14 +148,3 @@ spec:
                 name: logto-admin
                 port:
                   number: 3002
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: authorworks-config
-  namespace: authorworks
-data:
-  logto-endpoint: "https://auth.author.works"
-  logto-admin-endpoint: "https://auth-admin.author.works"
-  logto-redirect-uri: "https://author.works/auth/callback"
-
