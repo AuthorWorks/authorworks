@@ -6,6 +6,7 @@ namespace: authorworks
 resources:
 - ../../base-minimal
 - simple-deployment.yaml
+- sealed-secrets.yaml
 
 labels:
 - pairs:
