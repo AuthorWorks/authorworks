@@ -1,0 +1,188 @@
+# Infrastructure services deployed within K3d cluster
+# (Services that don't exist externally on the homelab)
+
+---
+# RabbitMQ - Message Queue
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management-alpine
+          ports:
+            - containerPort: 5672
+              name: amqp
+            - containerPort: 15672
+              name: management
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: "authorworks"
+            - name: RABBITMQ_DEFAULT_PASS
+              value: "authorworks123"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "ping"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+      volumes:
+        - name: rabbitmq-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: authorworks
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+    - name: management
+      port: 15672
+      targetPort: 15672
+---
+# Elasticsearch - Search Engine
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+          ports:
+            - containerPort: 9200
+          env:
+            - name: discovery.type
+              value: "single-node"
+            - name: xpack.security.enabled
+              value: "false"
+            - name: ES_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: es-data
+              mountPath: /usr/share/elasticsearch/data
+      volumes:
+        - name: es-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: authorworks
+spec:
+  selector:
+    app: elasticsearch
+  ports:
+    - port: 9200
+      targetPort: 9200
+---
+# Logto - Authentication
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logto
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logto
+  template:
+    metadata:
+      labels:
+        app: logto
+    spec:
+      containers:
+        - name: logto
+          image: svhd/logto:latest
+          ports:
+            - containerPort: 3001
+              name: main
+            - containerPort: 3002
+              name: admin
+          env:
+            - name: TRUST_PROXY_HEADER
+              value: "1"
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: LOGTO_DATABASE_URL
+            - name: ENDPOINT
+              value: "https://auth.authorworks.leopaska.xyz"
+            - name: ADMIN_ENDPOINT
+              value: "https://auth-admin.authorworks.leopaska.xyz"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: 3001
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logto
+  namespace: authorworks
+spec:
+  selector:
+    app: logto
+  ports:
+    - name: main
+      port: 3001
+      targetPort: 3001
+    - name: admin
+      port: 3002
+      targetPort: 3002
+

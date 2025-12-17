@@ -1,0 +1,69 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: authorworks
+  namespace: argocd
+spec:
+  generators:
+    # Environment-based generator
+    - list:
+        elements:
+          - env: homelab
+            cluster: https://kubernetes.default.svc
+            repoURL: https://github.com/leopaska/authorworks.git
+            targetRevision: main
+            syncWave: "1"
+          # Uncomment for production
+          # - env: production
+          #   cluster: https://kubernetes.default.svc
+          #   repoURL: https://github.com/leopaska/authorworks.git
+          #   targetRevision: main
+          #   syncWave: "1"
+  
+  template:
+    metadata:
+      name: 'authorworks-{{env}}'
+      namespace: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{syncWave}}'
+      labels:
+        app.kubernetes.io/name: authorworks
+        app.kubernetes.io/instance: '{{env}}'
+        environment: '{{env}}'
+    spec:
+      project: authorworks
+      
+      source:
+        repoURL: '{{repoURL}}'
+        targetRevision: '{{targetRevision}}'
+        path: 'k8s/overlays/{{env}}'
+      
+      destination:
+        server: '{{cluster}}'
+        namespace: authorworks
+      
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+      
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/replicas
+        - group: ""
+          kind: Secret
+          jsonPointers:
+            - /data

@@ -1,0 +1,55 @@
+#!/bin/bash
+set -e
+
+echo "🏠 Applying AuthorWorks to Homelab K3s cluster"
+echo ""
+echo "ℹ️  For GitOps with ArgoCD, use: ./bootstrap-argocd.sh"
+echo "    This script is for manual/direct deployment."
+echo ""
+
+# Check prerequisites
+command -v kubectl >/dev/null 2>&1 || { echo "❌ kubectl required"; exit 1; }
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+echo "📍 Using context: $(kubectl config current-context)"
+read -p "Continue? (y/n) " -n 1 -r
+echo
+[[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
+
+# Create namespace
+echo "📁 Creating namespace..."
+kubectl create namespace authorworks --dry-run=client -o yaml | kubectl apply -f -
+
+# Check for secrets
+if ! kubectl get secret authorworks-secrets -n authorworks &>/dev/null; then
+    echo ""
+    echo "⚠️  Secrets not found! Apply them first:"
+    echo "   1. Copy k8s/overlays/homelab/secrets-manual.yaml outside repo"
+    echo "   2. Fill in real values"
+    echo "   3. kubectl apply -f secrets-manual.yaml"
+    echo ""
+    read -p "Press enter after secrets are applied..."
+fi
+
+# Apply kustomization
+echo "🚀 Applying kustomization..."
+kubectl apply -k "${PROJECT_ROOT}/k8s/overlays/homelab"
+
+# Wait for deployments
+echo "⏳ Waiting for deployments..."
+kubectl rollout status deployment/authorworks-server -n authorworks --timeout=300s || true
+kubectl rollout status deployment/logto -n authorworks --timeout=300s || true
+
+echo ""
+echo "✅ Deployment complete!"
+echo ""
+kubectl get pods -n authorworks
+echo ""
+kubectl get ingress -n authorworks
+echo ""
+echo "🌐 Access at:"
+echo "  - https://author.works"
+echo "  - https://api.author.works"  
+echo "  - https://auth.author.works"

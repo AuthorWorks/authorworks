@@ -1,0 +1,65 @@
+# K3d Cluster Configuration for AuthorWorks Homelab
+# Creates a K3s cluster inside Docker that connects to external services
+
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: authorworks
+
+servers: 1
+agents: 2
+
+kubeAPI:
+  host: "authorworks.k3d.localhost"
+  hostIP: "127.0.0.1"
+  hostPort: "6445"
+
+image: rancher/k3s:v1.28.4-k3s2
+
+network: llm_network  # Connect to existing Docker network with external services
+
+ports:
+  - port: 8080:80      # HTTP
+    nodeFilters:
+      - loadbalancer
+  - port: 8443:443     # HTTPS  
+    nodeFilters:
+      - loadbalancer
+
+volumes:
+  # Mount local config for services
+  - volume: /tmp/authorworks-k3d:/var/lib/rancher/k3s/storage
+    nodeFilters:
+      - server:*
+      - agent:*
+
+registries:
+  create:
+    name: authorworks-registry
+    host: "0.0.0.0"
+    hostPort: "5111"
+
+options:
+  k3d:
+    wait: true
+    timeout: "360s"
+    disableLoadbalancer: false
+    disableImageVolume: false
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik  # We use external Traefik
+        nodeFilters:
+          - server:*
+      - arg: --tls-san=authorworks.k3d.localhost
+        nodeFilters:
+          - server:*
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true
+
+env:
+  - envVar: K3S_TOKEN=authorworks-cluster-token
+    nodeFilters:
+      - server:*
+      - agent:*
+

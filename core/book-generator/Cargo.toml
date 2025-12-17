@@ -15,8 +15,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # LLM clients
-anthropic = "0.2"
-async-openai = "0.26"
+anthropic = "0.0.8"
+async-openai = "0.24"
 ollama-rs = "0.2"
 langchain-rust = "4.6"
 

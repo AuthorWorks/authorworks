@@ -1,0 +1,309 @@
+# ============================================================================
+# OVERRIDES - Allow files blocked by Cursor's global gitignore
+# ============================================================================
+!.env
+!.env.*
+!.env.local
+!.env.development
+!.env.production
+!.env.example
+
+# Allow data files (removed from ignore list below)
+!*.csv
+!*.json
+!*.xml
+!*.log
+
+# ============================================================================
+# Dependencies & Package Managers
+# ============================================================================
+node_modules/
+.yarn/
+.pnp/
+.pnp.js
+bower_components/
+
+# Python
+venv/
+.venv/
+env/
+ENV/
+*.egg-info/
+pip-wheel-metadata/
+
+# Rust
+target/
+Cargo.lock  # Include in libraries, ignore in binaries
+
+# Go
+vendor/
+go.sum  # Can ignore if using modules
+
+# C/C++
+vendor/
+vcpkg_installed/
+
+# .NET/C#
+packages/
+bin/
+obj/
+
+# ============================================================================
+# Build Outputs & Compiled Files
+# ============================================================================
+
+# JavaScript/TypeScript
+dist/
+build/
+.next/
+out/
+.nuxt/
+.output/
+.vercel/
+*.min.js
+*.min.css
+*.map
+*.bundle.js
+
+# Rust
+target/
+*.rlib
+*.rmeta
+*.so
+*.dylib
+*.dll
+*.pdb
+
+# C/C++
+*.o
+*.obj
+*.exe
+*.out
+*.app
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+
+# C#/.NET
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.nupkg
+
+# Go
+*.exe
+*.test
+*.out
+go.work
+
+# Lean
+build/
+.lake/
+lake-packages/
+*.olean
+
+# Assembly/Compiled
+*.class
+*.pyc
+*.pyo
+*.pyd
+
+# ============================================================================
+# Test Coverage & Reports
+# ============================================================================
+coverage/
+.nyc_output/
+*.lcov
+htmlcov/
+.pytest_cache/
+.tox/
+junit.xml
+test-results/
+
+# ============================================================================
+# Python Specific
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.ipynb_checkpoints/
+*.sage.py
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# ============================================================================
+# Rust Specific
+# ============================================================================
+target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# ============================================================================
+# C/C++ Specific
+# ============================================================================
+*.d
+*.slo
+*.lo
+*.ko
+*.elf
+*.ilk
+*.map
+*.exp
+*.gch
+*.pch
+*.dSYM/
+*.su
+*.idb
+*.mod*
+*.cmd
+.tmp_versions/
+modules.order
+Module.symvers
+Mkfile.old
+dkms.conf
+
+# ============================================================================
+# C# / .NET Specific
+# ============================================================================
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ============================================================================
+# Go Specific
+# ============================================================================
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# ============================================================================
+# Lean Specific
+# ============================================================================
+build/
+.lake/
+lake-packages/
+*.olean
+
+# ============================================================================
+# Large Data & Database Files
+# ============================================================================
+# Note: *.csv, *.json, *.xml, *.log are now ALLOWED (see overrides at top)
+*.sqlite
+*.sqlite3
+*.db
+*.sql
+*.dump
+
+# ============================================================================
+# IDE & Editor Files
+# ============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# ============================================================================
+# OS Files
+# ============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ============================================================================
+# Temporary & Cache Files
+# ============================================================================
+*.tmp
+*.temp
+*.cache
+.cache/
+*.bak
+*.swp
+*.swo
+tmp/
+temp/
+
+# ============================================================================
+# Documentation Build Outputs
+# ============================================================================
+_build/
+.doctrees/
+docs/_build/
+site/
+.mkdocs/
+
+# ============================================================================
+# Container & VM Files
+# ============================================================================
+*.img
+*.qcow2
+*.vmdk
+*.vdi
+
+# ============================================================================
+# Asset & Media Files (Large)
+# ============================================================================
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.mp3
+*.wav
+*.flac
+
+# ============================================================================
+# Lock Files (Optional - uncomment if you want to ignore)
+# ============================================================================
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+# poetry.lock
+# Pipfile.lock

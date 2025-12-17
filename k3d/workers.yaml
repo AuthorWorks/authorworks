@@ -1,0 +1,122 @@
+# Background Workers for K3d Deployment
+
+---
+# Content Worker - AI content generation
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: content-worker
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: content-worker
+  template:
+    metadata:
+      labels:
+        app: content-worker
+    spec:
+      containers:
+        - name: content-worker
+          image: authorworks-registry:5111/content-worker:latest
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: DATABASE_URL
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: RABBITMQ_URL
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: ANTHROPIC_API_KEY
+            - name: RUST_LOG
+              value: "info,content_worker=debug"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+---
+# Media Worker - Media processing
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: media-worker
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: media-worker
+  template:
+    metadata:
+      labels:
+        app: media-worker
+    spec:
+      containers:
+        - name: media-worker
+          image: authorworks-registry:5111/media-worker:latest
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: DATABASE_URL
+            - name: S3_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_ENDPOINT
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_ACCESS_KEY
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_SECRET_KEY
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_BUCKET
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: OPENAI_API_KEY
+            - name: ELEVENLABS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: ELEVENLABS_API_KEY
+            - name: RUST_LOG
+              value: "info,media_worker=debug"
+            - name: TEMP_DIR
+              value: "/tmp/media-worker"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: temp-storage
+              mountPath: /tmp/media-worker
+      volumes:
+        - name: temp-storage
+          emptyDir:
+            sizeLimit: 5Gi
+

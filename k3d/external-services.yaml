@@ -1,0 +1,26 @@
+# External Services Configuration for K3d
+# These services run in Docker outside K3d but on the same network
+#
+# Configure service hostnames in your .env file:
+#   Homelab:
+#     - PostgreSQL: neon-postgres-leopaska:5432
+#     - Redis: redis-nd-leopaska:6379
+#     - MinIO: minio-leopaska:9000
+#   Local dev:
+#     - PostgreSQL: localist-postgres-local:5432
+#     - Redis: localist-redis-local:6379
+#     - MinIO: localist-minio-local:9000
+
+# ConfigMap with external service configuration
+# Values are substituted from environment variables during deployment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: external-services-config
+  namespace: authorworks
+data:
+  # These are template values - actual values come from secrets
+  POSTGRES_PORT: "5432"
+  REDIS_PORT: "6379"
+  MINIO_PORT: "9000"
+

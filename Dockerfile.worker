@@ -1,0 +1,68 @@
+# AuthorWorks Worker Dockerfile
+# Builds background worker services
+#
+# Build args:
+#   WORKER_NAME - name of the worker to build (e.g., content, media)
+#
+# Usage:
+#   docker build --build-arg WORKER_NAME=content -f Dockerfile.worker -t authorworks-content-worker .
+
+ARG RUST_VERSION=1.85
+
+# =============================================================================
+# Stage 1: Build
+# =============================================================================
+FROM rust:${RUST_VERSION}-slim-bookworm AS builder
+
+ARG WORKER_NAME
+ENV WORKER_NAME=${WORKER_NAME}
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy workspace configuration
+COPY Cargo.toml Cargo.lock ./
+
+# Copy all workspace members
+COPY core ./core
+COPY server ./server
+COPY server-wrapper ./server-wrapper
+COPY services ./services
+COPY workers ./workers
+
+# Build the specific worker
+WORKDIR /build/workers/${WORKER_NAME}
+RUN cargo build --release
+
+# =============================================================================
+# Stage 2: Runtime
+# =============================================================================
+FROM debian:bookworm-slim
+
+ARG WORKER_NAME
+ENV WORKER_NAME=${WORKER_NAME}
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the built binary
+COPY --from=builder /build/target/release/${WORKER_NAME}-worker /app/worker
+
+# Health check (workers expose a simple health endpoint)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Run the worker
+CMD ["/app/worker"]

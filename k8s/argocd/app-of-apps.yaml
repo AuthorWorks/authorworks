@@ -1,0 +1,27 @@
+# Root Application - App of Apps pattern
+# Deploy this first to bootstrap the entire stack
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: authorworks-apps
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/leopaska/authorworks.git
+    targetRevision: main
+    path: k8s/argocd
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

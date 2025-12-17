@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: authorworks
+  labels:
+    app.kubernetes.io/name: authorworks
+    app.kubernetes.io/part-of: authorworks-platform
+

@@ -4,7 +4,7 @@ version = "1.0.0"
 edition = "2021"
 
 [dependencies]
-book-generator = { path = "../book_generator" }
+book-generator = { path = "../core/book-generator" }
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 tower = "0.4"

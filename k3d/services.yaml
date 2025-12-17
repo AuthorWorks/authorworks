@@ -1,0 +1,511 @@
+# AuthorWorks Application Services for K3d
+# All 8 microservices + API Gateway
+
+---
+# User Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: authorworks-registry:5111/user-service:latest
+          ports:
+            - containerPort: 80
+          envFrom:
+            - secretRef:
+                name: authorworks-secrets
+          env:
+            - name: SPIN_VARIABLE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: DATABASE_URL
+            - name: SPIN_VARIABLE_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: REDIS_URL
+            - name: SPIN_VARIABLE_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: JWT_SECRET
+            - name: SPIN_VARIABLE_LOGTO_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: LOGTO_ENDPOINT
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: authorworks
+spec:
+  selector:
+    app: user-service
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# Content Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: content-service
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: content-service
+  template:
+    metadata:
+      labels:
+        app: content-service
+    spec:
+      containers:
+        - name: content-service
+          image: authorworks-registry:5111/content-service:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: SPIN_VARIABLE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: DATABASE_URL
+            - name: SPIN_VARIABLE_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: REDIS_URL
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: content-service
+  namespace: authorworks
+spec:
+  selector:
+    app: content-service
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# Storage Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storage-service
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storage-service
+  template:
+    metadata:
+      labels:
+        app: storage-service
+    spec:
+      containers:
+        - name: storage-service
+          image: authorworks-registry:5111/storage-service:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: SPIN_VARIABLE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: DATABASE_URL
+            - name: SPIN_VARIABLE_S3_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_ENDPOINT
+            - name: SPIN_VARIABLE_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_ACCESS_KEY
+            - name: SPIN_VARIABLE_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_SECRET_KEY
+            - name: SPIN_VARIABLE_S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_BUCKET
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: storage-service
+  namespace: authorworks
+spec:
+  selector:
+    app: storage-service
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# Editor Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: editor-service
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: editor-service
+  template:
+    metadata:
+      labels:
+        app: editor-service
+    spec:
+      containers:
+        - name: editor-service
+          image: authorworks-registry:5111/editor-service:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: SPIN_VARIABLE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: DATABASE_URL
+            - name: SPIN_VARIABLE_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: REDIS_URL
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: editor-service
+  namespace: authorworks
+spec:
+  selector:
+    app: editor-service
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# Subscription Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: subscription-service
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: subscription-service
+  template:
+    metadata:
+      labels:
+        app: subscription-service
+    spec:
+      containers:
+        - name: subscription-service
+          image: authorworks-registry:5111/subscription-service:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: SPIN_VARIABLE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: DATABASE_URL
+            - name: SPIN_VARIABLE_STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: STRIPE_SECRET_KEY
+            - name: SPIN_VARIABLE_STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: STRIPE_WEBHOOK_SECRET
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: subscription-service
+  namespace: authorworks
+spec:
+  selector:
+    app: subscription-service
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# Messaging Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: messaging-service
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: messaging-service
+  template:
+    metadata:
+      labels:
+        app: messaging-service
+    spec:
+      containers:
+        - name: messaging-service
+          image: authorworks-registry:5111/messaging-service:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: SPIN_VARIABLE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: DATABASE_URL
+            - name: SPIN_VARIABLE_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: REDIS_URL
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: messaging-service
+  namespace: authorworks
+spec:
+  selector:
+    app: messaging-service
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# Discovery Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery-service
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discovery-service
+  template:
+    metadata:
+      labels:
+        app: discovery-service
+    spec:
+      containers:
+        - name: discovery-service
+          image: authorworks-registry:5111/discovery-service:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: SPIN_VARIABLE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: DATABASE_URL
+            - name: SPIN_VARIABLE_ELASTICSEARCH_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: ELASTICSEARCH_URL
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery-service
+  namespace: authorworks
+spec:
+  selector:
+    app: discovery-service
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# Media Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: media-service
+  namespace: authorworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: media-service
+  template:
+    metadata:
+      labels:
+        app: media-service
+    spec:
+      containers:
+        - name: media-service
+          image: authorworks-registry:5111/media-service:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: SPIN_VARIABLE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: DATABASE_URL
+            - name: SPIN_VARIABLE_S3_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_ENDPOINT
+            - name: SPIN_VARIABLE_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_ACCESS_KEY
+            - name: SPIN_VARIABLE_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: S3_SECRET_KEY
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: media-service
+  namespace: authorworks
+spec:
+  selector:
+    app: media-service
+  ports:
+    - port: 80
+      targetPort: 80
+

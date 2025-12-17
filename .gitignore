@@ -32,6 +32,10 @@ tfplan
 # Kubernetes
 kubeconfig
 *.kubeconfig
+k8s/overlays/*/.env
+k8s/overlays/*/secrets.yaml
+!k8s/overlays/*/secrets-manual.yaml
+!k8s/overlays/*/sealed-secrets.yaml
 
 # Benchmark results
 benchmark_*.json

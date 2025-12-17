@@ -1,0 +1,32 @@
+# Logto Authentication - Separate Application for independent lifecycle
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: authorworks-logto
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: authorworks
+  
+  source:
+    repoURL: https://github.com/leopaska/authorworks.git
+    targetRevision: main
+    path: k8s/base
+    kustomize:
+      resources:
+        - logto.yaml
+        - namespace.yaml
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: authorworks
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

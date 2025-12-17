@@ -1,36 +1,54 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  output: 'standalone',
   images: {
-    domains: ['localhost', 'minio', 'logto'],
+    domains: ['localhost', 'minio', 'logto', 'localist-minio-local'],
     remotePatterns: [
       {
         protocol: 'https',
         hostname: '**',
       },
+      {
+        protocol: 'http',
+        hostname: '**',
+      },
     ],
   },
   async rewrites() {
+    const apiGateway = process.env.API_GATEWAY_URL || 'http://localhost:8080'
     return [
       {
         source: '/api/books/:path*',
-        destination: `${process.env.CONTENT_SERVICE_URL || 'http://localhost:8080'}/books/:path*`,
+        destination: `${apiGateway}/api/books/:path*`,
       },
       {
         source: '/api/chapters/:path*',
-        destination: `${process.env.CONTENT_SERVICE_URL || 'http://localhost:8080'}/chapters/:path*`,
+        destination: `${apiGateway}/api/chapters/:path*`,
       },
       {
         source: '/api/storage/:path*',
-        destination: `${process.env.STORAGE_SERVICE_URL || 'http://localhost:8081'}/:path*`,
+        destination: `${apiGateway}/api/storage/:path*`,
       },
       {
         source: '/api/subscription/:path*',
-        destination: `${process.env.SUBSCRIPTION_SERVICE_URL || 'http://localhost:8083'}/:path*`,
+        destination: `${apiGateway}/api/subscription/:path*`,
       },
       {
         source: '/api/users/:path*',
-        destination: `${process.env.USER_SERVICE_URL || 'http://localhost:8084'}/:path*`,
+        destination: `${apiGateway}/api/users/:path*`,
+      },
+      {
+        source: '/api/search/:path*',
+        destination: `${apiGateway}/api/search/:path*`,
+      },
+      {
+        source: '/api/media/:path*',
+        destination: `${apiGateway}/api/media/:path*`,
+      },
+      {
+        source: '/api/generate/:path*',
+        destination: `${apiGateway}/api/generate/:path*`,
       },
     ]
   },

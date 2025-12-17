@@ -176,14 +176,14 @@ struct OutlineInput {
     chapter_count: Option<i32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct BookOutline {
     synopsis: String,
     themes: Vec<String>,
     chapters: Vec<ChapterOutline>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ChapterOutline {
     title: String,
     outline: String,

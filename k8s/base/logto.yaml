@@ -103,16 +103,16 @@ metadata:
   name: logto
   namespace: authorworks
   annotations:
-    kubernetes.io/ingress.class: nginx
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
 spec:
+  ingressClassName: traefik
   tls:
     - hosts:
-        - auth.authorworks.leopaska.xyz
+        - auth.author.works
       secretName: logto-tls
   rules:
-    - host: auth.authorworks.leopaska.xyz
+    - host: auth.author.works
       http:
         paths:
           - path: /
@@ -129,18 +129,16 @@ metadata:
   name: logto-admin
   namespace: authorworks
   annotations:
-    kubernetes.io/ingress.class: nginx
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    # Add authentication for admin console
-    nginx.ingress.kubernetes.io/auth-url: "https://authelia.leopaska.xyz/api/verify"
-    nginx.ingress.kubernetes.io/auth-signin: "https://authelia.leopaska.xyz"
 spec:
+  ingressClassName: traefik
   tls:
     - hosts:
-        - auth-admin.authorworks.leopaska.xyz
+        - auth-admin.author.works
       secretName: logto-admin-tls
   rules:
-    - host: auth-admin.authorworks.leopaska.xyz
+    - host: auth-admin.author.works
       http:
         paths:
           - path: /
@@ -157,7 +155,7 @@ metadata:
   name: authorworks-config
   namespace: authorworks
 data:
-  logto-endpoint: "https://auth.authorworks.leopaska.xyz"
-  logto-admin-endpoint: "https://auth-admin.authorworks.leopaska.xyz"
-  logto-redirect-uri: "https://authorworks.leopaska.xyz/auth/callback"
+  logto-endpoint: "https://auth.author.works"
+  logto-admin-endpoint: "https://auth-admin.author.works"
+  logto-redirect-uri: "https://author.works/auth/callback"
 

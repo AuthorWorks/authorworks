@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
       - name: authorworks
-        image: k3d-registry.localhost:5555/authorworks:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/authorworks/authorworks-platform:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 3000
         env:
@@ -26,6 +26,9 @@ spec:
           value: "0.0.0.0"
         - name: PORT
           value: "3000"
+        envFrom:
+        - secretRef:
+            name: authorworks-secrets
         resources:
           requests:
             memory: "128Mi"
@@ -51,13 +54,31 @@ kind: Ingress
 metadata:
   name: authorworks-ingress
   namespace: authorworks
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - author.works
+        - api.author.works
+      secretName: authorworks-tls
   rules:
-  - host: authorworks.leopaska.xyz
+  - host: author.works
     http:
       paths:
       - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: authorworks-server
+            port:
+              number: 80
+  - host: api.author.works
+    http:
+      paths:
+      - path: /api
         pathType: Prefix
         backend:
           service:

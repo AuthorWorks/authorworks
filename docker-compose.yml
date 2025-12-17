@@ -1,5 +1,3 @@
-version: '3.8'
-
 # AuthorWorks Platform - Local Development
 # Complete stack with all required services
 #
@@ -99,17 +97,17 @@ services:
     networks:
       - authorworks
 
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
-    container_name: authorworks-elasticsearch
+  opensearch:
+    image: opensearchproject/opensearch:2.11.1
+    container_name: authorworks-opensearch
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
       - "9200:9200"
     volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
+      - elasticsearch_data:/usr/share/opensearch/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
       interval: 30s
@@ -153,8 +151,8 @@ services:
     image: axllent/mailpit:latest
     container_name: authorworks-mailpit
     ports:
-      - "8025:8025"   # Web UI
-      - "1025:1025"   # SMTP
+      - "8125:8025"   # Web UI (remapped)
+      - "1125:1025"   # SMTP (remapped)
     environment:
       MP_MAX_MESSAGES: 5000
       MP_DATABASE: /data/mailpit.db
@@ -235,8 +233,10 @@ services:
   
   content-worker:
     build:
-      context: ./workers/content
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: content
     container_name: authorworks-content-worker
     environment:
       - RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
@@ -258,8 +258,10 @@ services:
 
   media-worker:
     build:
-      context: ./workers/media
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: media
     container_name: authorworks-media-worker
     environment:
       - RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
@@ -280,8 +282,10 @@ services:
   
   user-service:
     build:
-      context: ./services/user
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_NAME: user
     container_name: authorworks-user
     environment:
       - SPIN_VARIABLE_DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
@@ -312,8 +316,10 @@ services:
 
   content-service:
     build:
-      context: ./services/content
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_NAME: content
     container_name: authorworks-content
     environment:
       - SPIN_VARIABLE_DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
@@ -337,8 +343,10 @@ services:
 
   storage-service:
     build:
-      context: ./services/storage
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_NAME: storage
     container_name: authorworks-storage
     environment:
       - SPIN_VARIABLE_MINIO_ENDPOINT=http://minio:9000
@@ -360,8 +368,10 @@ services:
 
   editor-service:
     build:
-      context: ./services/editor
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_NAME: editor
     container_name: authorworks-editor
     environment:
       - SPIN_VARIABLE_DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
@@ -383,8 +393,10 @@ services:
 
   subscription-service:
     build:
-      context: ./services/subscription
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_NAME: subscription
     container_name: authorworks-subscription
     environment:
       - SPIN_VARIABLE_DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
@@ -406,8 +418,10 @@ services:
 
   messaging-service:
     build:
-      context: ./services/messaging
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_NAME: messaging
     container_name: authorworks-messaging
     environment:
       - SPIN_VARIABLE_REDIS_URL=redis://redis:6379
@@ -429,19 +443,21 @@ services:
 
   discovery-service:
     build:
-      context: ./services/discovery
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_NAME: discovery
     container_name: authorworks-discovery
     environment:
       - SPIN_VARIABLE_DATABASE_URL=postgres://authorworks:${DB_PASSWORD:-authorworks123}@postgres:5432/authorworks
       - SPIN_VARIABLE_REDIS_URL=redis://redis:6379
-      - SPIN_VARIABLE_ELASTICSEARCH_URL=http://elasticsearch:9200
+      - SPIN_VARIABLE_ELASTICSEARCH_URL=http://opensearch:9200
     ports:
       - "3107:80"
     depends_on:
       postgres:
         condition: service_healthy
-      elasticsearch:
+      opensearch:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
@@ -453,8 +469,10 @@ services:
 
   media-service:
     build:
-      context: ./services/media
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_NAME: media
     container_name: authorworks-media
     environment:
       - SPIN_VARIABLE_MINIO_ENDPOINT=http://minio:9000

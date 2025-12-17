@@ -5,8 +5,12 @@ namespace: authorworks
 
 resources:
 - ../../base
+- simple-deployment.yaml
 
-# Note: SpinApp replicas managed in base spinapp.yaml
+# Note: Secrets managed separately via:
+#   - ExternalSecrets (recommended)
+#   - SealedSecrets
+#   - Manual apply before ArgoCD sync
 
 labels:
 - pairs:
@@ -15,3 +19,27 @@ labels:
 images:
 - name: ghcr.io/authorworks/authorworks-platform
   newTag: latest
+
+# Homelab-specific replica count (lower for resource constraints)
+replicas:
+- name: authorworks-frontend
+  count: 1
+- name: logto
+  count: 1
+
+# Patches for homelab environment
+patches:
+  # Reduce resource requests for homelab
+  - target:
+      kind: Deployment
+      name: logto
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "128Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "256Mi"

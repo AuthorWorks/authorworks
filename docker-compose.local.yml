@@ -1,0 +1,322 @@
+# AuthorWorks Platform - Local Development
+# Uses existing local services on localist_localist-local network:
+#   - PostgreSQL: localist-postgres-local:5432
+#   - Redis: localist-redis-local:6379
+#   - MinIO: localist-minio-local:9000
+#
+# Usage:
+#   docker compose -f docker-compose.local.yml up -d
+#   docker compose -f docker-compose.local.yml logs -f
+#   docker compose -f docker-compose.local.yml down
+
+networks:
+  localist_localist-local:
+    external: true
+
+services:
+  #==========================================================================
+  # INFRASTRUCTURE (not available externally)
+  #==========================================================================
+  
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: authorworks-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: authorworks
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-authorworks123}
+    ports:
+      - "15672:15672"  # Management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - localist_localist-local
+
+  # Using OpenSearch instead of Elasticsearch for better ARM64 support
+  opensearch:
+    image: opensearchproject/opensearch:2.11.1
+    container_name: authorworks-opensearch
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - localist_localist-local
+
+  #==========================================================================
+  # AUTHENTICATION - Logto
+  #==========================================================================
+  
+  logto:
+    image: svhd/logto:latest
+    container_name: authorworks-logto
+    environment:
+      - TRUST_PROXY_HEADER=1
+      - DB_URL=postgres://postgres@localist-postgres-local:5432/logto
+      - ENDPOINT=http://localhost:3012
+      - ADMIN_ENDPOINT=http://localhost:3013
+    ports:
+      - "3012:3001"  # Main
+      - "3013:3002"  # Admin
+    networks:
+      - localist_localist-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      - rabbitmq
+
+  #==========================================================================
+  # BACKGROUND WORKERS
+  #==========================================================================
+  
+  content-worker:
+    build:
+      context: ./workers/content
+      dockerfile: Dockerfile
+    container_name: authorworks-content-worker
+    environment:
+      - RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@localist-postgres-local:5432/authorworks
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@localist-redis-local:6379
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - S3_ENDPOINT=http://localist-minio-local:9000
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - RUST_LOG=info,content_worker=debug
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - localist_localist-local
+
+  media-worker:
+    build:
+      context: ./workers/media
+      dockerfile: Dockerfile
+    container_name: authorworks-media-worker
+    environment:
+      - RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@localist-postgres-local:5432/authorworks
+      - S3_ENDPOINT=http://localist-minio-local:9000
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - RUST_LOG=info,media_worker=debug
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - localist_localist-local
+
+  #==========================================================================
+  # APPLICATION SERVICES (WASM/Spin containers)
+  #==========================================================================
+  
+  user-service:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    container_name: authorworks-user
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@localist-postgres-local:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD:-}@localist-redis-local:6379
+      - SPIN_VARIABLE_JWT_SECRET=${JWT_SECRET:-dev-secret-change-me}
+      - SPIN_VARIABLE_LOGTO_ENDPOINT=http://logto:3001
+      - SPIN_VARIABLE_LOGTO_CLIENT_ID=${LOGTO_CLIENT_ID:-authorworks-app}
+      - SPIN_VARIABLE_LOGTO_CLIENT_SECRET=${LOGTO_CLIENT_SECRET:-}
+    networks:
+      - localist_localist-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  content-service:
+    build:
+      context: ./services/content
+      dockerfile: Dockerfile
+    container_name: authorworks-content
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@localist-postgres-local:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD:-}@localist-redis-local:6379
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+    networks:
+      - localist_localist-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  storage-service:
+    build:
+      context: ./services/storage
+      dockerfile: Dockerfile
+    container_name: authorworks-storage
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@localist-postgres-local:5432/authorworks
+      - SPIN_VARIABLE_S3_ENDPOINT=http://localist-minio-local:9000
+      - SPIN_VARIABLE_S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - SPIN_VARIABLE_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD:-}@localist-redis-local:6379
+    networks:
+      - localist_localist-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  editor-service:
+    build:
+      context: ./services/editor
+      dockerfile: Dockerfile
+    container_name: authorworks-editor
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@localist-postgres-local:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD:-}@localist-redis-local:6379
+    networks:
+      - localist_localist-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  subscription-service:
+    build:
+      context: ./services/subscription
+      dockerfile: Dockerfile
+    container_name: authorworks-subscription
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@localist-postgres-local:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD:-}@localist-redis-local:6379
+      - SPIN_VARIABLE_STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - SPIN_VARIABLE_STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+    networks:
+      - localist_localist-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  messaging-service:
+    build:
+      context: ./services/messaging
+      dockerfile: Dockerfile
+    container_name: authorworks-messaging
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@localist-postgres-local:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD:-}@localist-redis-local:6379
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+    networks:
+      - localist_localist-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  discovery-service:
+    build:
+      context: ./services/discovery
+      dockerfile: Dockerfile
+    container_name: authorworks-discovery
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@localist-postgres-local:5432/authorworks
+      - SPIN_VARIABLE_REDIS_URL=redis://:${REDIS_PASSWORD:-}@localist-redis-local:6379
+      - SPIN_VARIABLE_ELASTICSEARCH_URL=http://opensearch:9200
+    networks:
+      - localist_localist-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  media-service:
+    build:
+      context: ./services/media
+      dockerfile: Dockerfile
+    container_name: authorworks-media
+    environment:
+      - SPIN_VARIABLE_DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@localist-postgres-local:5432/authorworks
+      - SPIN_VARIABLE_S3_ENDPOINT=http://localist-minio-local:9000
+      - SPIN_VARIABLE_S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - SPIN_VARIABLE_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - SPIN_VARIABLE_RABBITMQ_URL=amqp://authorworks:${RABBITMQ_PASSWORD:-authorworks123}@rabbitmq:5672
+    networks:
+      - localist_localist-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  #==========================================================================
+  # API GATEWAY + FRONTEND
+  #==========================================================================
+  
+  api-gateway:
+    image: nginx:alpine
+    container_name: authorworks-nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      - user-service
+      - content-service
+      - storage-service
+      - editor-service
+      - subscription-service
+      - messaging-service
+      - discovery-service
+      - media-service
+    networks:
+      - localist_localist-local
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend/app
+      dockerfile: Dockerfile
+    container_name: authorworks-frontend
+    environment:
+      - NEXT_PUBLIC_LOGTO_ENDPOINT=http://localhost:3012
+      - NEXT_PUBLIC_LOGTO_APP_ID=${LOGTO_CLIENT_ID:-authorworks-app}
+      - NEXT_PUBLIC_REDIRECT_URI=http://localhost:3010/callback
+      - LOGTO_ENDPOINT=http://logto:3001
+      - LOGTO_APP_ID=${LOGTO_CLIENT_ID:-authorworks-app}
+      - LOGTO_APP_SECRET=${LOGTO_CLIENT_SECRET:-}
+      - USER_SERVICE_URL=http://user-service:80
+      - CONTENT_SERVICE_URL=http://content-service:80
+      - STORAGE_SERVICE_URL=http://storage-service:80
+      - SUBSCRIPTION_SERVICE_URL=http://subscription-service:80
+    ports:
+      - "3010:3000"
+    depends_on:
+      - api-gateway
+    networks:
+      - localist_localist-local
+

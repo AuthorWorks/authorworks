@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: authorworks
+
+resources:
+  - namespace.yaml
+  - external-services.yaml
+  - secrets.yaml
+  - infrastructure.yaml
+  - services.yaml
+  - workers.yaml
+  - api-gateway.yaml
+  - ingress.yaml
+
+commonLabels:
+  app.kubernetes.io/name: authorworks
+  app.kubernetes.io/part-of: authorworks-platform
+  environment: homelab
+
+images:
+  - name: authorworks-registry:5111/user-service
+    newTag: latest
+  - name: authorworks-registry:5111/content-service
+    newTag: latest
+  - name: authorworks-registry:5111/storage-service
+    newTag: latest
+  - name: authorworks-registry:5111/editor-service
+    newTag: latest
+  - name: authorworks-registry:5111/subscription-service
+    newTag: latest
+  - name: authorworks-registry:5111/messaging-service
+    newTag: latest
+  - name: authorworks-registry:5111/discovery-service
+    newTag: latest
+  - name: authorworks-registry:5111/media-service
+    newTag: latest
+  - name: authorworks-registry:5111/content-worker
+    newTag: latest
+  - name: authorworks-registry:5111/media-worker
+    newTag: latest
+

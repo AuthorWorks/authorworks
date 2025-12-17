@@ -1,0 +1,53 @@
+# Ingress configuration for K3d
+# Note: Since we connect to external Traefik via llm_network,
+# we can use IngressRoute CRDs or simple NodePort access
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authorworks-ingress
+  namespace: authorworks
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - author.works
+        - api.author.works
+        - auth.author.works
+        - auth-admin.author.works
+      secretName: authorworks-tls
+  rules:
+    - host: author.works
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 80
+    - host: auth.author.works
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: logto
+                port:
+                  number: 3001
+    - host: auth-admin.author.works
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: logto
+                port:
+                  number: 3002
+

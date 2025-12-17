@@ -10,11 +10,11 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - authorworks.leopaska.xyz
-        - api.authorworks.leopaska.xyz
+        - author.works
+        - api.author.works
       secretName: authorworks-tls
   rules:
-    - host: authorworks.leopaska.xyz
+    - host: author.works
       http:
         paths:
           - path: /
@@ -24,7 +24,7 @@ spec:
                 name: authorworks-frontend
                 port:
                   number: 80
-    - host: api.authorworks.leopaska.xyz
+    - host: api.author.works
       http:
         paths:
           - path: /
@@ -43,15 +43,15 @@ metadata:
   namespace: authorworks-tenant-1
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   tls:
     - hosts:
-        - tenant1.authorworks.leopaska.xyz
+        - tenant1.author.works
       secretName: tenant-1-tls
   rules:
-    - host: tenant1.authorworks.leopaska.xyz
+    - host: tenant1.author.works
       http:
         paths:
           - path: /
@@ -69,15 +69,15 @@ metadata:
   namespace: authorworks-tenant-2
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   tls:
     - hosts:
-        - tenant2.authorworks.leopaska.xyz
+        - tenant2.author.works
       secretName: tenant-2-tls
   rules:
-    - host: tenant2.authorworks.leopaska.xyz
+    - host: tenant2.author.works
       http:
         paths:
           - path: /

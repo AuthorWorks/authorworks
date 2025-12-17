@@ -1,0 +1,32 @@
+# Content and Media Workers - Separate Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: authorworks-workers
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: authorworks
+  
+  source:
+    repoURL: https://github.com/leopaska/authorworks.git
+    targetRevision: main
+    path: k8s/base
+    kustomize:
+      images:
+        - name=ghcr.io/authorworks/content-worker
+          newTag=latest
+        - name=ghcr.io/authorworks/media-worker
+          newTag=latest
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: authorworks
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

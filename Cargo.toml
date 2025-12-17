@@ -13,6 +13,8 @@ members = [
     "services/subscription",
     "services/discovery",
     "services/media",
+    "workers/content",
+    "workers/media",
 ]
 exclude = [
     "authorworks-engine",  # Submodule with its own Cargo.toml

@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: authorworks
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: AuthorWorks AI Content Creation Platform
+  
+  sourceRepos:
+    - 'https://github.com/authorworks/*'
+    - 'git@github.com:authorworks/*'
+  
+  destinations:
+    - namespace: authorworks
+      server: https://kubernetes.default.svc
+    - namespace: authorworks-tenant-*
+      server: https://kubernetes.default.svc
+  
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: cert-manager.io
+      kind: Certificate
+    - group: cert-manager.io
+      kind: ClusterIssuer
+  
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  
+  orphanedResources:
+    warn: true
