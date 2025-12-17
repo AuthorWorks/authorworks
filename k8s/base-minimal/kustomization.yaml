@@ -6,7 +6,7 @@ namespace: authorworks
 resources:
   - namespace.yaml
   # secrets.yaml excluded - managed via SealedSecrets
-  - logto.yaml
+  # logto.yaml excluded - Logto managed by separate cluster service
   - ingress.yaml
 
 labels:
