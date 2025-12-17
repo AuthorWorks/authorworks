@@ -1,0 +1,89 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authorworks-ingress
+  namespace: authorworks
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - author.works
+        - api.author.works
+      secretName: authorworks-tls
+  rules:
+    - host: author.works
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-frontend
+                port:
+                  number: 80
+    - host: api.author.works
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-platform
+                port:
+                  number: 80
+---
+# Tenant-specific ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authorworks-tenant-1-ingress
+  namespace: authorworks-tenant-1
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - tenant1.author.works
+      secretName: tenant-1-tls
+  rules:
+    - host: tenant1.author.works
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-tenant-1
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authorworks-tenant-2-ingress
+  namespace: authorworks-tenant-2
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - tenant2.author.works
+      secretName: tenant-2-tls
+  rules:
+    - host: tenant2.author.works
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-tenant-2
+                port:
+                  number: 80

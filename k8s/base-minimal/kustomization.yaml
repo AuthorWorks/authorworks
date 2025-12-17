@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: authorworks
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - logto.yaml
+  - ingress.yaml
+
+labels:
+- pairs:
+    app: authorworks
+    managed-by: kustomize
+
+configMapGenerator:
+  - name: authorworks-config
+    literals:
+      - LOG_LEVEL=info
+      - logto-endpoint=https://auth.author.works
+      - logto-admin-endpoint=https://auth-admin.author.works
+      - logto-redirect-uri=https://author.works/auth/callback
+

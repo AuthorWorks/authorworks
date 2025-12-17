@@ -4,13 +4,8 @@ kind: Kustomization
 namespace: authorworks
 
 resources:
-- ../../base
+- ../../base-minimal
 - simple-deployment.yaml
-
-# Note: Secrets managed separately via:
-#   - ExternalSecrets (recommended)
-#   - SealedSecrets
-#   - Manual apply before ArgoCD sync
 
 labels:
 - pairs:
@@ -20,14 +15,12 @@ images:
 - name: ghcr.io/authorworks/authorworks-platform
   newTag: latest
 
-# Homelab-specific replica count (lower for resource constraints)
 replicas:
 - name: authorworks-server
   count: 1
 - name: logto
   count: 1
 
-# Patches for homelab environment
 patches:
   # Reduce resource requests for homelab
   - target:
@@ -43,7 +36,7 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/resources/limits/memory
         value: "256Mi"
-  # Route ingress to authorworks-server in homelab
+  # Route ingress to authorworks-server
   - target:
       kind: Ingress
       name: authorworks-ingress
