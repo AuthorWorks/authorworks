@@ -15,27 +15,98 @@ spec:
     spec:
       containers:
       - name: authorworks
-        image: ghcr.io/authorworks/authorworks-platform:latest
-        imagePullPolicy: Always
+        # TODO: Replace with ghcr.io/authorworks/authorworks-platform:latest when built
+        image: nginx:alpine
+        imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 3000
+        - containerPort: 80
         env:
         - name: RUST_LOG
           value: "info"
-        - name: HOST
-          value: "0.0.0.0"
-        - name: PORT
-          value: "3000"
         envFrom:
         - secretRef:
             name: authorworks-secrets
+            optional: true
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "64Mi"
+            cpu: "50m"
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "128Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: html
+        configMap:
+          name: authorworks-landing
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authorworks-landing
+  namespace: authorworks
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>AuthorWorks - AI Content Creation Platform</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: 'Segoe UI', system-ui, sans-serif;
+          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #e8e8e8;
+        }
+        .container { text-align: center; padding: 2rem; }
+        h1 { 
+          font-size: 3.5rem; 
+          background: linear-gradient(90deg, #e94560, #ff6b6b);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          margin-bottom: 1rem;
+        }
+        .tagline { font-size: 1.5rem; color: #94a3b8; margin-bottom: 2rem; }
+        .status { 
+          display: inline-block;
+          padding: 0.5rem 1.5rem;
+          background: rgba(233, 69, 96, 0.2);
+          border: 1px solid #e94560;
+          border-radius: 2rem;
+          color: #e94560;
+          font-size: 0.9rem;
+        }
+        .features { margin-top: 3rem; display: flex; gap: 2rem; justify-content: center; flex-wrap: wrap; }
+        .feature { 
+          background: rgba(255,255,255,0.05);
+          padding: 1.5rem;
+          border-radius: 1rem;
+          width: 200px;
+        }
+        .feature h3 { color: #e94560; margin-bottom: 0.5rem; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>AuthorWorks</h1>
+        <p class="tagline">AI-Powered Content Creation Platform</p>
+        <span class="status">🚀 Deployment in Progress</span>
+        <div class="features">
+          <div class="feature"><h3>📝 Write</h3><p>AI-assisted writing tools</p></div>
+          <div class="feature"><h3>🎨 Create</h3><p>Generate covers & media</p></div>
+          <div class="feature"><h3>📚 Publish</h3><p>Multi-format export</p></div>
+        </div>
+      </div>
+    </body>
+    </html>
 ---
 apiVersion: v1
 kind: Service
@@ -47,4 +118,4 @@ spec:
     app: authorworks
   ports:
   - port: 80
-    targetPort: 3000
+    targetPort: 80

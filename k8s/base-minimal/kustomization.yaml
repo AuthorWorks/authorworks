@@ -5,7 +5,7 @@ namespace: authorworks
 
 resources:
   - namespace.yaml
-  - secrets.yaml
+  # secrets.yaml excluded - managed via SealedSecrets
   - logto.yaml
   - ingress.yaml
 
