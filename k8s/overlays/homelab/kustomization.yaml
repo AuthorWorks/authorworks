@@ -22,7 +22,7 @@ images:
 
 # Homelab-specific replica count (lower for resource constraints)
 replicas:
-- name: authorworks-frontend
+- name: authorworks-server
   count: 1
 - name: logto
   count: 1
