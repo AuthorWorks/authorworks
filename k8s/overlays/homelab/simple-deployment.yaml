@@ -23,6 +23,20 @@ spec:
         env:
         - name: RUST_LOG
           value: "info"
+        - name: LOGTO_ENDPOINT
+          value: "https://auth.leopaska.xyz"
+        - name: LOGTO_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: authorworks-secrets
+              key: logto-app-id
+              optional: true
+        - name: LOGTO_APP_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: authorworks-secrets
+              key: logto-app-secret
+              optional: true
         envFrom:
         - secretRef:
             name: authorworks-secrets

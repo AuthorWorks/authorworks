@@ -18,7 +18,6 @@ configMapGenerator:
   - name: authorworks-config
     literals:
       - LOG_LEVEL=info
-      - logto-endpoint=https://auth.author.works
-      - logto-admin-endpoint=https://auth-admin.author.works
-      - logto-redirect-uri=https://author.works/auth/callback
+      - LOGTO_ENDPOINT=https://auth.leopaska.xyz
+      - LOGTO_REDIRECT_URI=https://author.works/auth/callback
 
