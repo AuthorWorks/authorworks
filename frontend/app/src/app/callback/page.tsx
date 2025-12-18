@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useAuth } from '../hooks/useAuth'
 import { BookOpen } from 'lucide-react'
 
-export default function Callback() {
+function CallbackContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { handleCallback } = useAuth()
@@ -66,6 +66,22 @@ export default function Callback() {
         <p className="text-slate-400">Please wait while we complete your authentication.</p>
       </div>
     </div>
+  )
+}
+
+export default function Callback() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="h-16 w-16 rounded-full bg-indigo-500/20 flex items-center justify-center mx-auto animate-pulse">
+            <BookOpen className="h-8 w-8 text-indigo-500" />
+          </div>
+        </div>
+      </div>
+    }>
+      <CallbackContent />
+    </Suspense>
   )
 }
 
