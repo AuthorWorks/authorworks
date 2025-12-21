@@ -29,6 +29,7 @@ use sha2::Sha256;
 mod models;
 mod error;
 mod stripe;
+mod credits;
 
 use error::ServiceError;
 use models::*;
@@ -64,6 +65,14 @@ fn handle_request(req: Request) -> anyhow::Result<impl IntoResponse> {
         // Billing
         (Method::Get, "/invoices") => list_invoices(&req),
         (Method::Get, "/usage") => get_usage(&req),
+
+        // Credits
+        (Method::Get, "/credits/packages") => get_credit_packages(&req),
+        (Method::Get, "/credits/balance") => get_user_credit_balance(&req),
+        (Method::Get, "/credits/history") => get_user_credit_history(&req),
+        (Method::Post, "/credits/checkout") => create_credit_checkout(&req),
+        (Method::Post, "/credits/consume") => consume_user_credits(&req),
+        (Method::Post, "/credits/check") => check_user_credits(&req),
 
         // CORS
         (Method::Options, _) => cors_preflight(),
@@ -993,4 +1002,103 @@ fn json_response<T: Serialize>(status: u16, body: T) -> Result<Response, Service
 fn parse_json_body<T: for<'de> Deserialize<'de>>(req: &Request) -> Result<T, ServiceError> {
     serde_json::from_slice(req.body())
         .map_err(|e| ServiceError::BadRequest(format!("Invalid JSON: {}", e)))
+}
+
+//=============================================================================
+// Credit Endpoint Handlers
+//=============================================================================
+
+fn get_credit_packages(_req: &Request) -> Result<Response, ServiceError> {
+    let conn = get_db_connection()?;
+    credits::list_credit_packages(&conn)
+}
+
+fn get_user_credit_balance(req: &Request) -> Result<Response, ServiceError> {
+    let user_id = get_user_id(req)?;
+    let conn = get_db_connection()?;
+    credits::get_credit_balance(&conn, user_id)
+}
+
+fn get_user_credit_history(req: &Request) -> Result<Response, ServiceError> {
+    let user_id = get_user_id(req)?;
+    let conn = get_db_connection()?;
+
+    // Parse query param for limit (default 50)
+    let limit = 50; // TODO: Parse from query string
+    credits::get_credit_history(&conn, user_id, limit)
+}
+
+fn create_credit_checkout(req: &Request) -> Result<Response, ServiceError> {
+    let user_id = get_user_id(req)?;
+    let conn = get_db_connection()?;
+
+    #[derive(Deserialize)]
+    struct CheckoutRequest {
+        package_id: String,
+    }
+
+    let body: CheckoutRequest = parse_json_body(req)?;
+    let package_id = Uuid::parse_str(&body.package_id)
+        .map_err(|_| ServiceError::BadRequest("Invalid package ID".into()))?;
+
+    credits::create_credit_checkout_session(&conn, user_id, package_id)
+}
+
+fn consume_user_credits(req: &Request) -> Result<Response, ServiceError> {
+    let user_id = get_user_id(req)?;
+    let conn = get_db_connection()?;
+
+    #[derive(Deserialize)]
+    struct ConsumeRequest {
+        amount: i32,
+        reason: String,
+        reference_id: Option<String>,
+        reference_type: Option<String>,
+    }
+
+    let body: ConsumeRequest = parse_json_body(req)?;
+
+    let reference_id = body.reference_id
+        .and_then(|id| Uuid::parse_str(&id).ok());
+
+    let success = credits::consume_credits(
+        &conn,
+        user_id,
+        body.amount,
+        &body.reason,
+        reference_id,
+        body.reference_type.as_deref(),
+    )?;
+
+    if success {
+        json_response(200, serde_json::json!({
+            "success": true,
+            "message": "Credits consumed successfully"
+        }))
+    } else {
+        Err(ServiceError::BadRequest("Insufficient credits".into()))
+    }
+}
+
+fn check_user_credits(req: &Request) -> Result<Response, ServiceError> {
+    let user_id = get_user_id(req)?;
+    let conn = get_db_connection()?;
+
+    #[derive(Deserialize)]
+    struct CheckRequest {
+        required_amount: i32,
+    }
+
+    let body: CheckRequest = parse_json_body(req)?;
+
+    let has_credits = credits::check_sufficient_credits(
+        &conn,
+        user_id,
+        body.required_amount,
+    )?;
+
+    json_response(200, serde_json::json!({
+        "has_sufficient_credits": has_credits,
+        "required_amount": body.required_amount
+    }))
 }

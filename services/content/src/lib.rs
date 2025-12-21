@@ -30,6 +30,7 @@ mod models;
 mod handlers;
 mod error;
 mod generation;
+mod credits;
 
 use error::ServiceError;
 use models::*;
@@ -519,8 +520,20 @@ fn generate_outline(req: &Request) -> Result<Response, ServiceError> {
 
     verify_book_ownership(&conn, &body.book_id, &user_id)?;
 
-    // Queue the generation job via RabbitMQ
     let job_id = Uuid::new_v4();
+
+    // CREDIT ENFORCEMENT: Check and consume credits before generation
+    let estimated_words = 300; // Typical outline length
+    let credit_cost = credits::enforce_credits_for_generation(
+        &conn,
+        &user_id,
+        &job_id,
+        &body.book_id,
+        "outline",
+        estimated_words,
+    )?;
+
+    // Queue the generation job via RabbitMQ
     let job = serde_json::json!({
         "type": "GenerateOutline",
         "job_id": job_id,
@@ -550,6 +563,7 @@ fn generate_outline(req: &Request) -> Result<Response, ServiceError> {
         "job_id": job_id,
         "status": "pending",
         "message": "Outline generation queued",
+        "credits_charged": credit_cost,
         "check_status": format!("/jobs/{}", job_id)
     }))
 }
@@ -560,8 +574,19 @@ fn generate_chapter_content(req: &Request) -> Result<Response, ServiceError> {
     let conn = get_db_connection()?;
 
     let book_id = get_chapter_book_id(&conn, &body.chapter_id, &user_id)?;
-
     let job_id = Uuid::new_v4();
+
+    // CREDIT ENFORCEMENT: Check and consume credits before generation
+    let estimated_words = body.target_length.unwrap_or(2500); // Default chapter length
+    let credit_cost = credits::enforce_credits_for_generation(
+        &conn,
+        &user_id,
+        &job_id,
+        &book_id,
+        "chapter",
+        estimated_words,
+    )?;
+
     let job = serde_json::json!({
         "type": "GenerateChapter",
         "job_id": job_id,
@@ -588,7 +613,9 @@ fn generate_chapter_content(req: &Request) -> Result<Response, ServiceError> {
     json_response(202, serde_json::json!({
         "job_id": job_id,
         "status": "pending",
-        "message": "Chapter generation queued"
+        "message": "Chapter generation queued",
+        "credits_charged": credit_cost,
+        "estimated_words": estimated_words
     }))
 }
 
@@ -598,8 +625,19 @@ fn enhance_content(req: &Request) -> Result<Response, ServiceError> {
     let conn = get_db_connection()?;
 
     let book_id = get_chapter_book_id(&conn, &body.chapter_id, &user_id)?;
-
     let job_id = Uuid::new_v4();
+
+    // CREDIT ENFORCEMENT: Check and consume credits before enhancement
+    let content_word_count = body.content.split_whitespace().count() as i32;
+    let credit_cost = credits::enforce_credits_for_generation(
+        &conn,
+        &user_id,
+        &job_id,
+        &book_id,
+        "enhance",
+        content_word_count,
+    )?;
+
     let job = serde_json::json!({
         "type": "EnhanceContent",
         "job_id": job_id,
@@ -626,7 +664,8 @@ fn enhance_content(req: &Request) -> Result<Response, ServiceError> {
     json_response(202, serde_json::json!({
         "job_id": job_id,
         "status": "pending",
-        "message": "Content enhancement queued"
+        "message": "Content enhancement queued",
+        "credits_charged": credit_cost
     }))
 }
 

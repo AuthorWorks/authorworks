@@ -20,6 +20,9 @@ pub enum ServiceError {
     #[error("Conflict: {0}")]
     Conflict(String),
 
+    #[error("Payment required: {0}")]
+    PaymentRequired(String),
+
     #[error("Internal error: {0}")]
     Internal(String),
 
@@ -43,6 +46,7 @@ impl ServiceError {
             ServiceError::Forbidden(_) => 403,
             ServiceError::NotFound(_) => 404,
             ServiceError::Conflict(_) => 409,
+            ServiceError::PaymentRequired(_) => 402,
             ServiceError::Internal(_) => 500,
             ServiceError::ServiceUnavailable(_) => 503,
         }
@@ -55,6 +59,7 @@ impl ServiceError {
             ServiceError::Forbidden(_) => "FORBIDDEN",
             ServiceError::NotFound(_) => "NOT_FOUND",
             ServiceError::Conflict(_) => "CONFLICT",
+            ServiceError::PaymentRequired(_) => "PAYMENT_REQUIRED",
             ServiceError::Internal(_) => "INTERNAL_ERROR",
             ServiceError::ServiceUnavailable(_) => "SERVICE_UNAVAILABLE",
         }
@@ -67,6 +72,7 @@ impl ServiceError {
             code: self.error_code().to_string(),
             details: match &self {
                 ServiceError::BadRequest(d) => Some(d.clone()),
+                ServiceError::PaymentRequired(d) => Some(d.clone()),
                 ServiceError::Internal(d) => Some(d.clone()),
                 _ => None,
             },
