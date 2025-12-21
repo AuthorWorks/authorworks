@@ -13,12 +13,13 @@ spec:
       labels:
         app: authorworks
     spec:
-      imagePullSecrets:
-        - name: ghcr-pull-secret
+      # TODO: Add ghcr-pull-secret when GHCR package is set up with proper auth
+      # imagePullSecrets:
+      #   - name: ghcr-pull-secret
       containers:
       - name: authorworks
-        image: ghcr.io/authorworks/authorworks:latest
-        imagePullPolicy: Always
+        image: docker.io/library/authorworks-app:latest
+        imagePullPolicy: IfNotPresent  # Use local image until GHCR is configured
         ports:
         - containerPort: 3000
         env:
