@@ -32,7 +32,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasi, wasm32-wasip1
+          targets: wasm32-wasip1
 
       - name: Install Spin CLI
         run: |
@@ -56,7 +56,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasi, wasm32-wasip1
+          targets: wasm32-wasip1
 
       - name: Install Spin CLI
         run: |
@@ -124,7 +124,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasi, wasm32-wasip1
+          targets: wasm32-wasip1
 
       - name: Run tests for ${{ matrix.service }}
         run: |
