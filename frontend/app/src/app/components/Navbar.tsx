@@ -1,14 +1,14 @@
 'use client'
 
+import { Bell, BookOpen, LogOut, Menu, PenTool, Settings, User, X } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BookOpen, PenTool, Settings, Bell, LogOut, User, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 
 export function Navbar() {
   const pathname = usePathname()
-  const { user, isAuthenticated, login, logout, isLoading } = useAuth()
+  const { user, isAuthenticated, login, signUp, logout, isLoading } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
@@ -34,6 +34,13 @@ export function Navbar() {
               <Link href="/" className="btn-ghost">
                 Home
               </Link>
+              <button
+                onClick={signUp}
+                disabled={isLoading}
+                className="btn-secondary"
+              >
+                Create Account
+              </button>
               <button
                 onClick={login}
                 disabled={isLoading}

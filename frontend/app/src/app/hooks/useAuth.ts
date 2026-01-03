@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
 
 interface User {
   id: string
@@ -22,6 +22,37 @@ const LOGTO_ENDPOINT = process.env.NEXT_PUBLIC_LOGTO_ENDPOINT || 'http://localho
 const LOGTO_APP_ID = process.env.NEXT_PUBLIC_LOGTO_APP_ID || ''
 const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || 'http://localhost:3001/callback'
 
+// PKCE helpers
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(verifier)
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return base64UrlEncode(digest)
+}
+
+function base64UrlEncode(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+function generateRandomString(length: number): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
+  let result = ''
+  const randomValues = new Uint8Array(length)
+  crypto.getRandomValues(randomValues)
+  for (let i = 0; i < length; i++) {
+    result += chars[randomValues[i] % chars.length]
+  }
+  return result
+}
+
 export function useAuth() {
   const router = useRouter()
   const [authState, setAuthState] = useState<AuthState>({
@@ -38,14 +69,12 @@ export function useAuth() {
 
   const checkSession = async () => {
     try {
-      // Check if we have a token stored
       const token = localStorage.getItem('accessToken')
       if (!token) {
         setAuthState(prev => ({ ...prev, isLoading: false }))
         return
       }
 
-      // Validate token with backend
       const response = await fetch('/api/auth/me', {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -61,7 +90,6 @@ export function useAuth() {
           accessToken: token,
         })
       } else {
-        // Token invalid, clear it
         localStorage.removeItem('accessToken')
         setAuthState(prev => ({ ...prev, isLoading: false }))
       }
@@ -71,28 +99,44 @@ export function useAuth() {
     }
   }
 
-  const login = useCallback(() => {
+  const initiateAuth = useCallback(async (isSignUp: boolean = false) => {
     // Generate state for CSRF protection
     const state = generateRandomString(32)
     localStorage.setItem('oauth_state', state)
 
-    // Generate PKCE code verifier and challenge
+    // Generate PKCE code verifier (43-128 characters per RFC 7636)
     const codeVerifier = generateRandomString(64)
     localStorage.setItem('code_verifier', codeVerifier)
+
+    // Generate S256 code challenge
+    const codeChallenge = await generateCodeChallenge(codeVerifier)
 
     // Build authorization URL
     const params = new URLSearchParams({
       client_id: LOGTO_APP_ID,
       redirect_uri: REDIRECT_URI,
       response_type: 'code',
-      scope: 'openid profile email',
+      scope: 'openid profile email offline_access',
       state,
-      code_challenge: codeVerifier, // In production, this should be SHA256 hashed
-      code_challenge_method: 'plain', // Should be 'S256' in production
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
     })
+
+    // Add prompt for sign-up flow
+    if (isSignUp) {
+      params.set('prompt', 'create')
+    }
 
     window.location.href = `${LOGTO_ENDPOINT}/oidc/auth?${params.toString()}`
   }, [])
+
+  const login = useCallback(() => {
+    initiateAuth(false)
+  }, [initiateAuth])
+
+  const signUp = useCallback(() => {
+    initiateAuth(true)
+  }, [initiateAuth])
 
   const handleCallback = useCallback(async (code: string, state: string) => {
     // Verify state
@@ -102,6 +146,9 @@ export function useAuth() {
     }
 
     const codeVerifier = localStorage.getItem('code_verifier')
+    if (!codeVerifier) {
+      throw new Error('Missing code verifier')
+    }
 
     // Exchange code for tokens
     const response = await fetch('/api/auth/callback', {
@@ -117,7 +164,8 @@ export function useAuth() {
     })
 
     if (!response.ok) {
-      throw new Error('Token exchange failed')
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(error.error || 'Token exchange failed')
     }
 
     const { accessToken, user } = await response.json()
@@ -139,7 +187,6 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     try {
-      // Notify backend
       const token = localStorage.getItem('accessToken')
       if (token) {
         await fetch('/api/auth/logout', {
@@ -153,7 +200,6 @@ export function useAuth() {
       console.error('Logout error:', error)
     }
 
-    // Clear local state
     localStorage.removeItem('accessToken')
     setAuthState({
       user: null,
@@ -162,7 +208,6 @@ export function useAuth() {
       accessToken: null,
     })
 
-    // Redirect to Logto logout
     const params = new URLSearchParams({
       client_id: LOGTO_APP_ID,
       post_logout_redirect_uri: window.location.origin,
@@ -173,19 +218,8 @@ export function useAuth() {
   return {
     ...authState,
     login,
+    signUp,
     logout,
     handleCallback,
   }
 }
-
-function generateRandomString(length: number): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let result = ''
-  const randomValues = new Uint8Array(length)
-  crypto.getRandomValues(randomValues)
-  for (let i = 0; i < length; i++) {
-    result += chars[randomValues[i] % chars.length]
-  }
-  return result
-}
-
