@@ -3,7 +3,7 @@
 import { Bell, BookOpen, LogOut, Menu, PenTool, Settings, User, X } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 
 export function Navbar() {
@@ -11,6 +11,12 @@ export function Navbar() {
   const { user, isAuthenticated, login, signUp, logout, isLoading } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  // Prevent hydration mismatch by only rendering auth-dependent UI after mount
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: BookOpen },
@@ -20,7 +26,8 @@ export function Navbar() {
 
   const isActive = (href: string) => pathname.startsWith(href)
 
-  if (!isAuthenticated) {
+  // Always render unauthenticated navbar on server and during initial hydration
+  if (!mounted || !isAuthenticated) {
     return (
       <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
