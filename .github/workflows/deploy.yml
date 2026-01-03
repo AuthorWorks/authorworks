@@ -1,12 +1,13 @@
 name: Deploy AuthorWorks
 
 on:
-  push:
-    branches: [main]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [main]
+  # Disabled auto-trigger until WASM services are fully configured
+  # push:
+  #   branches: [main]
+  #   tags:
+  #     - 'v*'
+  # pull_request:
+  #   branches: [main]
   workflow_dispatch:
     inputs:
       environment:
