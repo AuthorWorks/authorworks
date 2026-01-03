@@ -95,3 +95,24 @@ jobs:
             NEXT_PUBLIC_REDIRECT_URI=${{ secrets.NEXT_PUBLIC_REDIRECT_URI }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy-homelab:
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger homelab deployment
+        env:
+          SSH_KEY: ${{ secrets.HOMELAB_SSH_KEY }}
+          SSH_HOST: ${{ secrets.HOMELAB_HOST }}
+          SSH_USER: ${{ secrets.HOMELAB_USER }}
+        run: |
+          if [ -n "$SSH_KEY" ] && [ -n "$SSH_HOST" ]; then
+            mkdir -p ~/.ssh
+            echo "$SSH_KEY" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts 2>/dev/null
+            ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "kubectl -n authorworks rollout restart deployment/authorworks-frontend 2>/dev/null || echo 'Deployment not found, will be created by ArgoCD'"
+          else
+            echo "SSH credentials not configured, skipping deployment trigger"
+          fi

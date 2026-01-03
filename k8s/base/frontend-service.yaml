@@ -36,7 +36,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: ghcr.io/authorworks/frontend:latest
+        image: ghcr.io/authorworks/frontend:homelab
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
