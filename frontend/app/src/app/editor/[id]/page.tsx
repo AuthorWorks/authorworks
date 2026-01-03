@@ -1,12 +1,29 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, BookOpen, CheckCircle, Loader2, Save } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowLeft, Save, Sparkles, Undo, Redo, Bold, Italic, List, Heading1, Heading2, Loader2, CheckCircle } from 'lucide-react'
-import { useAuth } from '../../hooks/useAuth'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useParams, useRouter } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
+import { useAuth } from '../../hooks/useAuth'
+
+// Dynamically import the editor to avoid SSR issues with Slate
+const PlateEditor = dynamic(
+  () => import('../../components/editor/PlateEditor').then(mod => mod.PlateEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+      </div>
+    )
+  }
+)
+
+// Import serialization helpers
+import { deserializeFromMarkdown, serializeToMarkdown } from '../../components/editor/PlateEditor'
 
 export default function EditorPage() {
   const params = useParams()
@@ -14,13 +31,13 @@ export default function EditorPage() {
   const queryClient = useQueryClient()
   const { isAuthenticated, isLoading: authLoading, accessToken } = useAuth()
   const chapterId = params.id as string
-  
-  const [content, setContent] = useState('')
+
+  const [editorValue, setEditorValue] = useState<any[]>([])
   const [title, setTitle] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [wordCount, setWordCount] = useState(0)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [isEditorReady, setIsEditorReady] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -41,14 +58,23 @@ export default function EditorPage() {
     enabled: isAuthenticated && !!chapterId,
   })
 
-  // Set initial content
+  // Set initial content when chapter loads
   useEffect(() => {
-    if (chapter) {
-      setContent(chapter.content || '')
+    if (chapter && !isEditorReady) {
+      const content = chapter.content || ''
+      const nodes = deserializeFromMarkdown(content)
+      setEditorValue(nodes)
       setTitle(chapter.title || '')
       setWordCount(chapter.word_count || 0)
+      setIsEditorReady(true)
     }
-  }, [chapter])
+  }, [chapter, isEditorReady])
+
+  // Calculate word count from editor value
+  const calculateWordCount = useCallback((value: any[]) => {
+    const text = serializeToMarkdown(value)
+    return text.split(/\s+/).filter(Boolean).length
+  }, [])
 
   // Save mutation
   const saveMutation = useMutation({
@@ -71,32 +97,34 @@ export default function EditorPage() {
   })
 
   // Auto-save with debounce
-  const debouncedSave = useDebouncedCallback((newContent: string) => {
-    setIsSaving(true)
-    saveMutation.mutate({ title, content: newContent }, {
-      onSettled: () => setIsSaving(false)
-    })
-  }, 2000)
-
-  // Handle content change
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newContent = e.target.value
-    setContent(newContent)
-    setWordCount(newContent.split(/\s+/).filter(Boolean).length)
-    debouncedSave(newContent)
-  }
-
-  // Manual save
-  const handleSave = () => {
+  const debouncedSave = useDebouncedCallback((value: any[]) => {
+    const content = serializeToMarkdown(value)
     setIsSaving(true)
     saveMutation.mutate({ title, content }, {
       onSettled: () => setIsSaving(false)
     })
-  }
+  }, 2000)
+
+  // Handle editor content change
+  const handleEditorChange = useCallback((value: any[]) => {
+    setEditorValue(value)
+    setWordCount(calculateWordCount(value))
+    debouncedSave(value)
+  }, [calculateWordCount, debouncedSave])
+
+  // Manual save
+  const handleSave = useCallback(() => {
+    const content = serializeToMarkdown(editorValue)
+    setIsSaving(true)
+    saveMutation.mutate({ title, content }, {
+      onSettled: () => setIsSaving(false)
+    })
+  }, [editorValue, title, saveMutation])
 
   // AI enhancement
   const enhanceMutation = useMutation({
     mutationFn: async (type: string) => {
+      const content = serializeToMarkdown(editorValue)
       const response = await fetch('/api/generate/enhance', {
         method: 'POST',
         headers: {
@@ -112,6 +140,13 @@ export default function EditorPage() {
       if (!response.ok) throw new Error('Failed to enhance')
       return response.json()
     },
+    onSuccess: (data) => {
+      // Update editor with enhanced content
+      if (data.content) {
+        const nodes = deserializeFromMarkdown(data.content)
+        setEditorValue(nodes)
+      }
+    },
   })
 
   // Keyboard shortcuts
@@ -124,7 +159,7 @@ export default function EditorPage() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [content, title])
+  }, [handleSave])
 
   if (authLoading || chapterLoading) {
     return (
@@ -138,30 +173,35 @@ export default function EditorPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col">
-      {/* Toolbar */}
+      {/* Header Bar */}
       <div className="sticky top-16 z-40 bg-slate-900/95 backdrop-blur-xl border-b border-slate-800">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
               href={`/books/${chapter.book_id}`}
-              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
               <ArrowLeft className="h-5 w-5" />
             </Link>
-            
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onBlur={handleSave}
-              className="text-lg font-semibold bg-transparent border-none focus:outline-none focus:ring-0 text-white"
-              placeholder="Chapter Title"
-            />
+
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+                <BookOpen className="h-4 w-4 text-indigo-400" />
+              </div>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onBlur={handleSave}
+                className="text-lg font-semibold bg-transparent border-none focus:outline-none focus:ring-0 text-white placeholder-slate-500"
+                placeholder="Chapter Title"
+              />
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Status */}
-            <div className="flex items-center gap-2 text-sm text-slate-500 mr-4">
+          <div className="flex items-center gap-4">
+            {/* Status indicator */}
+            <div className="flex items-center gap-2 text-sm text-slate-500">
               {isSaving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -176,46 +216,15 @@ export default function EditorPage() {
             </div>
 
             {/* Word count */}
-            <span className="text-sm text-slate-500 mr-4">
+            <div className="text-sm text-slate-500 border-l border-slate-700 pl-4">
               {wordCount.toLocaleString()} words
-            </span>
-
-            {/* Formatting */}
-            <div className="flex items-center gap-1 border-l border-slate-700 pl-4">
-              <button className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
-                <Bold className="h-4 w-4" />
-              </button>
-              <button className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
-                <Italic className="h-4 w-4" />
-              </button>
-              <button className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
-                <Heading1 className="h-4 w-4" />
-              </button>
-              <button className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
-                <Heading2 className="h-4 w-4" />
-              </button>
-              <button className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
-                <List className="h-4 w-4" />
-              </button>
             </div>
 
-            {/* AI */}
-            <div className="flex items-center gap-1 border-l border-slate-700 pl-4">
-              <button
-                onClick={() => enhanceMutation.mutate('style')}
-                disabled={enhanceMutation.isPending}
-                className="p-2 rounded-lg text-purple-400 hover:bg-purple-500/20 disabled:opacity-50"
-                title="Enhance with AI"
-              >
-                <Sparkles className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Save */}
+            {/* Save button */}
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="btn-primary ml-4"
+              className="btn-primary"
             >
               {isSaving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -228,21 +237,23 @@ export default function EditorPage() {
         </div>
       </div>
 
-      {/* Editor */}
-      <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
-        <textarea
-          ref={textareaRef}
-          value={content}
-          onChange={handleContentChange}
-          placeholder="Start writing your chapter..."
-          className="w-full h-full min-h-[calc(100vh-200px)] bg-transparent text-slate-200 text-lg leading-relaxed resize-none focus:outline-none placeholder-slate-600 font-serif"
-          style={{ fontFamily: 'Georgia, serif' }}
-        />
+      {/* Editor Area */}
+      <div className="flex-1 max-w-4xl mx-auto w-full">
+        {isEditorReady && (
+          <PlateEditor
+            initialValue={editorValue}
+            onChange={handleEditorChange}
+            onAIEnhance={(type) => enhanceMutation.mutate(type)}
+            isAILoading={enhanceMutation.isPending}
+            placeholder="Start writing your chapter..."
+            className="min-h-[calc(100vh-180px)]"
+          />
+        )}
       </div>
 
       {/* AI Panel (shown when enhancing) */}
       {enhanceMutation.isPending && (
-        <div className="fixed bottom-4 right-4 bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-xl flex items-center gap-3">
+        <div className="fixed bottom-4 right-4 bg-slate-800 border border-purple-500/30 rounded-xl p-4 shadow-xl flex items-center gap-3 animate-fade-in">
           <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
           <span className="text-slate-300">AI is enhancing your content...</span>
         </div>
@@ -250,4 +261,3 @@ export default function EditorPage() {
     </div>
   )
 }
-
