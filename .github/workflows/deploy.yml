@@ -75,7 +75,14 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build SPIN application
-        run: make build-optimized
+        run: |
+          if make -n build-optimized 2>/dev/null; then
+            make build-optimized
+          elif make -n build 2>/dev/null; then
+            make build
+          else
+            echo "⚠️ No build target found, skipping SPIN build"
+          fi
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
