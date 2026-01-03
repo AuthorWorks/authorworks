@@ -7,6 +7,7 @@ resources:
   - namespace.yaml
   - secrets.yaml
   - services.yaml
+  - frontend-service.yaml
   - spinapp.yaml
   - logto.yaml
   - ingress.yaml
@@ -24,6 +25,8 @@ labels:
 
 images:
   - name: ghcr.io/authorworks/authorworks-platform
+    newTag: latest
+  - name: ghcr.io/authorworks/frontend
     newTag: latest
 
 configMapGenerator:
