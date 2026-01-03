@@ -5,6 +5,7 @@ namespace: authorworks
 
 resources:
 - ../../base-minimal
+- ../../base/frontend-service.yaml
 - simple-deployment.yaml
 - sealed-secrets.yaml
 
@@ -14,7 +15,9 @@ labels:
 
 images:
 - name: ghcr.io/authorworks/authorworks-platform
-  newTag: latest
+  newTag: homelab
+- name: ghcr.io/authorworks/frontend
+  newTag: homelab
 
 replicas:
 - name: authorworks-server

@@ -10,7 +10,7 @@ spec:
         elements:
           - env: homelab
             cluster: https://kubernetes.default.svc
-            repoURL: https://github.com/leopaska/authorworks.git
+            repoURL: https://github.com/AuthorWorks/authorworks.git
             targetRevision: main
             syncWave: "1"
           # Uncomment for production
@@ -19,7 +19,7 @@ spec:
           #   repoURL: https://github.com/leopaska/authorworks.git
           #   targetRevision: main
           #   syncWave: "1"
-  
+
   template:
     metadata:
       name: 'authorworks-{{env}}'
@@ -32,16 +32,16 @@ spec:
         environment: '{{env}}'
     spec:
       project: authorworks
-      
+
       source:
         repoURL: '{{repoURL}}'
         targetRevision: '{{targetRevision}}'
         path: 'k8s/overlays/{{env}}'
-      
+
       destination:
         server: '{{cluster}}'
         namespace: authorworks
-      
+
       syncPolicy:
         automated:
           prune: true
@@ -57,7 +57,7 @@ spec:
             duration: 5s
             factor: 2
             maxDuration: 3m
-      
+
       ignoreDifferences:
         - group: apps
           kind: Deployment

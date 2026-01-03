@@ -9,16 +9,16 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  
+
   source:
-    repoURL: https://github.com/leopaska/authorworks.git
+    repoURL: https://github.com/AuthorWorks/authorworks.git
     targetRevision: main
     path: k8s/argocd
-  
+
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
-  
+
   syncPolicy:
     automated:
       prune: true
