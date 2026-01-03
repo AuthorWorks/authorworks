@@ -33,27 +33,27 @@ impl Chapter {
     ) -> Result<Self> {
         println!("📚 Generating chapter {} outline: \"{}\"...", chapter_number, title);
         info!("Generating chapter {} outline...", chapter_number);
-        
+
         // Check if we've already generated all chapters from the outline
         if chapter_number > context.outline.chapters.len() {
             return Err(crate::error::BookGeneratorError::Generation(
-                format!("Attempted to generate chapter {} when the outline only contains {} chapters", 
-                    chapter_number, 
+                format!("Attempted to generate chapter {} when the outline only contains {} chapters",
+                    chapter_number,
                     context.outline.chapters.len()
                 )
             ));
         }
-        
+
         // Check if we've exceeded the maximum number of chapters specified in config
         if chapter_number > config.max_chapters {
             return Err(crate::error::BookGeneratorError::Generation(
-                format!("Attempted to generate chapter {} when the maximum is set to {} chapters", 
-                    chapter_number, 
+                format!("Attempted to generate chapter {} when the maximum is set to {} chapters",
+                    chapter_number,
                     config.max_chapters
                 )
             ));
         }
-        
+
         println!("📝 Generating temporary summary for chapter {}", chapter_number);
         // Generate temporary summary first
         let temp_summary = TemporarySummary::generate_chapter(
@@ -67,7 +67,7 @@ impl Chapter {
 
         println!("✨ Generating detailed outline for chapter {}", chapter_number);
         info!("Sending chapter outline generation prompt to LLM");
-        
+
         let llm = crate::llm::create_llm(config)?;
         let prompt = Prompts::chapter();
         let chain = LLMChainBuilder::new()
@@ -132,8 +132,8 @@ impl Chapter {
 
         let mut outline = ChapterOutline::parse_from_llm(&output.generation);
         outline.chapter_number = chapter_number;
-        
-        println!("✅ Successfully generated outline for chapter {}: \"{}\" with {} scenes", 
+
+        println!("✅ Successfully generated outline for chapter {}: \"{}\" with {} scenes",
                  chapter_number, title, outline.scenes.len());
 
         Ok(Self {

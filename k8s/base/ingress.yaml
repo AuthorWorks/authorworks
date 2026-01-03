@@ -1,89 +1,45 @@
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+# AuthorWorks Traefik IngressRoute
+# Uses Traefik CRD for routing - Cloudflare handles SSL termination
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
-  name: authorworks-ingress
+  name: authorworks
   namespace: authorworks
-  annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  labels:
+    app: authorworks
+    environment: homelab
 spec:
-  ingressClassName: traefik
-  tls:
-    - hosts:
-        - author.works
-        - api.author.works
-      secretName: authorworks-tls
-  rules:
-    - host: author.works
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: authorworks-frontend
-                port:
-                  number: 80
-    - host: api.author.works
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: authorworks-platform
-                port:
-                  number: 80
+  entryPoints:
+    - web
+  routes:
+    # API routes
+    - kind: Rule
+      match: Host(`author.works`) && PathPrefix(`/api`)
+      services:
+        - name: authorworks-server
+          port: 80
+    # Main app
+    - kind: Rule
+      match: Host(`author.works`) || Host(`www.author.works`)
+      services:
+        - name: authorworks-server
+          port: 80
 ---
-# Tenant-specific ingress
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+# API subdomain route
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
-  name: authorworks-tenant-1-ingress
-  namespace: authorworks-tenant-1
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+  name: authorworks-api
+  namespace: authorworks
+  labels:
+    app: authorworks
+    environment: homelab
 spec:
-  ingressClassName: traefik
-  tls:
-    - hosts:
-        - tenant1.author.works
-      secretName: tenant-1-tls
-  rules:
-    - host: tenant1.author.works
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: authorworks-tenant-1
-                port:
-                  number: 80
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: authorworks-tenant-2-ingress
-  namespace: authorworks-tenant-2
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
-spec:
-  ingressClassName: traefik
-  tls:
-    - hosts:
-        - tenant2.author.works
-      secretName: tenant-2-tls
-  rules:
-    - host: tenant2.author.works
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: authorworks-tenant-2
-                port:
-                  number: 80
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: Host(`api.author.works`)
+      services:
+        - name: authorworks-server
+          port: 80
