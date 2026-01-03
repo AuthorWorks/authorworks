@@ -12,18 +12,18 @@ spec:
   entryPoints:
     - web
   routes:
-    # API routes
+    # API routes - proxy to backend services
     - kind: Rule
       match: Host(`author.works`) && PathPrefix(`/api`)
       services:
-        - name: authorworks-server
+        - name: authorworks-platform
           port: 80
-    # Main app
+    # Frontend - Next.js application
     - kind: Rule
       match: Host(`author.works`) || Host(`www.author.works`)
       services:
-        - name: authorworks-server
-          port: 80
+        - name: authorworks-frontend
+          port: 3000
 ---
 # API subdomain route
 apiVersion: traefik.io/v1alpha1
@@ -41,5 +41,5 @@ spec:
     - kind: Rule
       match: Host(`api.author.works`)
       services:
-        - name: authorworks-server
+        - name: authorworks-platform
           port: 80
