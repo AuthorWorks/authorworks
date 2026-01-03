@@ -8,6 +8,7 @@ resources:
 - ../../base/frontend-service.yaml
 - simple-deployment.yaml
 - sealed-secrets.yaml
+- ghcr-sealed-secret.yaml
 
 labels:
 - pairs:

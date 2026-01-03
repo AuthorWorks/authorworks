@@ -13,9 +13,6 @@ spec:
       labels:
         app: authorworks
     spec:
-      # TODO: Add ghcr-pull-secret when GHCR package is set up with proper auth
-      # imagePullSecrets:
-      #   - name: ghcr-pull-secret
       imagePullSecrets:
         - name: ghcr-pull-secret
       containers:

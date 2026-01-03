@@ -34,6 +34,8 @@ spec:
       labels:
         app: authorworks-frontend
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
       - name: frontend
         image: ghcr.io/authorworks/frontend:homelab
