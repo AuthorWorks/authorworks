@@ -57,9 +57,9 @@ spec:
               key: logto-app-id
         - name: NEXT_PUBLIC_REDIRECT_URI
           value: "https://author.works/callback"
-        # Server-side env vars for API routes
+        # Server-side env vars for API routes (use internal cluster URL)
         - name: LOGTO_ENDPOINT
-          value: "https://auth.leopaska.xyz"
+          value: "http://logto.security.svc.cluster.local:3001"
         - name: LOGTO_APP_ID
           valueFrom:
             secretKeyRef:
