@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://localhost:3002'
-const LOGTO_APP_ID = process.env.LOGTO_APP_ID || ''
-const LOGTO_APP_SECRET = process.env.LOGTO_APP_SECRET || ''
-
 export async function POST(request: NextRequest) {
+  // Read env vars inside handler to avoid build-time caching
+  const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://localhost:3002'
+  const LOGTO_APP_ID = process.env.LOGTO_APP_ID || ''
+  const LOGTO_APP_SECRET = process.env.LOGTO_APP_SECRET || ''
+
+  console.log('Auth callback - LOGTO_ENDPOINT:', LOGTO_ENDPOINT)
+
   try {
     const body = await request.json()
     const { code, codeVerifier, redirectUri } = body
@@ -59,26 +62,35 @@ export async function POST(request: NextRequest) {
 
     const userInfo = await userInfoResponse.json()
 
-    // Sync user to our database via User Service
-    const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:8080'
-    const syncResponse = await fetch(`${userServiceUrl}/api/users/sync`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${access_token}`,
-      },
-      body: JSON.stringify({
-        logto_id: userInfo.sub,
-        email: userInfo.email,
-        name: userInfo.name || userInfo.username,
-        avatar: userInfo.picture,
-      }),
-    })
-
+    // Sync user to our database via User Service (optional - don't fail if unavailable)
+    const userServiceUrl = process.env.USER_SERVICE_URL
+    if (!userServiceUrl) {
+      console.log('USER_SERVICE_URL not configured, skipping user sync')
+    }
     let userId = userInfo.sub
-    if (syncResponse.ok) {
-      const syncedUser = await syncResponse.json()
-      userId = syncedUser.id
+    
+    if (userServiceUrl) {
+      try {
+        const syncResponse = await fetch(`${userServiceUrl}/api/users/sync`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${access_token}`,
+          },
+          body: JSON.stringify({
+            logto_id: userInfo.sub,
+            email: userInfo.email,
+            name: userInfo.name || userInfo.username,
+            avatar: userInfo.picture,
+          }),
+        })
+        if (syncResponse.ok) {
+          const syncedUser = await syncResponse.json()
+          userId = syncedUser.id
+        }
+      } catch (syncError) {
+        console.warn('User sync failed (non-critical):', syncError)
+      }
     }
 
     // Return user info and token to client
