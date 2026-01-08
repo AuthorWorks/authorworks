@@ -5,7 +5,6 @@ namespace: authorworks
 
 resources:
 - ../../base-minimal
-- ../../base/frontend-service.yaml
 - simple-deployment.yaml
 - sealed-secrets.yaml
 - ghcr-sealed-secret.yaml
