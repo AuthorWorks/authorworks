@@ -49,10 +49,7 @@ spec:
           value: "http://authorworks-api-gateway.authorworks.svc.cluster.local:8080"
         # Client-side env vars (NEXT_PUBLIC_ prefix)
         - name: NEXT_PUBLIC_LOGTO_ENDPOINT
-          valueFrom:
-            secretKeyRef:
-              name: authorworks-secrets
-              key: logto-endpoint
+          value: "https://auth.leopaska.xyz"
         - name: NEXT_PUBLIC_LOGTO_APP_ID
           valueFrom:
             secretKeyRef:
@@ -62,10 +59,7 @@ spec:
           value: "https://author.works/callback"
         # Server-side env vars for API routes
         - name: LOGTO_ENDPOINT
-          valueFrom:
-            secretKeyRef:
-              name: authorworks-secrets
-              key: logto-endpoint
+          value: "https://auth.leopaska.xyz"
         - name: LOGTO_APP_ID
           valueFrom:
             secretKeyRef:
