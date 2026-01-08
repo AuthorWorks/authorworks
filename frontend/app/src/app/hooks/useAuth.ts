@@ -122,9 +122,9 @@ export function useAuth() {
       code_challenge_method: 'S256',
     })
 
-    // Add prompt for sign-up flow
+    // Add interaction mode for sign-up flow
     if (isSignUp) {
-      params.set('prompt', 'create')
+      params.set('first_screen', 'register')
     }
 
     window.location.href = `${LOGTO_ENDPOINT}/oidc/auth?${params.toString()}`
