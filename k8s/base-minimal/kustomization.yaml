@@ -19,5 +19,5 @@ configMapGenerator:
     literals:
       - LOG_LEVEL=info
       - LOGTO_ENDPOINT=https://auth.leopaska.xyz
-      - LOGTO_REDIRECT_URI=https://author.works/auth/callback
+      - LOGTO_REDIRECT_URI=https://author.works/callback
 

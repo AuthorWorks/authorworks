@@ -17,7 +17,15 @@ spec:
     - host: author.works
       http:
         paths:
-          # API routes go to backend
+          # Auth API routes go to frontend (Next.js API routes)
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-frontend
+                port:
+                  number: 3000
+          # Other API routes go to backend
           - path: /api
             pathType: Prefix
             backend:
