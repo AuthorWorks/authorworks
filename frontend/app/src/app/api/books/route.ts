@@ -65,20 +65,28 @@ export async function GET(request: NextRequest) {
 
 // POST /api/books - Create a new book
 export async function POST(request: NextRequest) {
+  console.log('POST /api/books - starting')
+
   const userId = await getUserId(request)
+  console.log('POST /api/books - userId:', userId)
+
   if (!userId) {
+    console.log('POST /api/books - Unauthorized, no userId')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const pool = getPool()
   try {
     const body = await request.json()
+    console.log('POST /api/books - body:', JSON.stringify(body))
     const { title, description, genre, metadata } = body
 
     if (!title?.trim()) {
+      console.log('POST /api/books - Missing title')
       return NextResponse.json({ error: 'Title is required' }, { status: 400 })
     }
 
+    console.log('POST /api/books - Inserting into database')
     const result = await pool.query(
       `INSERT INTO books (user_id, title, description, genre, metadata)
        VALUES ($1, $2, $3, $4, $5)
@@ -86,9 +94,10 @@ export async function POST(request: NextRequest) {
       [userId, title.trim(), description || null, genre || null, metadata ? JSON.stringify(metadata) : '{}']
     )
 
+    console.log('POST /api/books - Success, book id:', result.rows[0]?.id)
     return NextResponse.json(result.rows[0], { status: 201 })
   } catch (error) {
-    console.error('Error creating book:', error)
+    console.error('POST /api/books - Error:', error)
     return NextResponse.json({ error: 'Failed to create book' }, { status: 500 })
   } finally {
     await pool.end()

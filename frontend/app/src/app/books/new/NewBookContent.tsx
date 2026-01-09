@@ -48,6 +48,7 @@ export default function NewBookContent() {
   // Detailed progress tracking for better UX
   const [creationStatus, setCreationStatus] = useState<'idle' | 'creating' | 'generating' | 'saving' | 'done'>('idle')
   const [statusMessage, setStatusMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
   const [currentStep, setCurrentStep] = useState(0)
   const [totalSteps, setTotalSteps] = useState(0)
   const [stepDetails, setStepDetails] = useState<string[]>([])
@@ -112,7 +113,11 @@ export default function NewBookContent() {
           metadata,
         }),
       })
-      if (!response.ok) throw new Error('Failed to create book')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        console.error('Book creation failed:', response.status, errorData)
+        throw new Error(errorData.error || `Failed to create book (${response.status})`)
+      }
       return response.json()
     },
     onSuccess: async (data) => {
@@ -175,9 +180,11 @@ export default function NewBookContent() {
       await advanceProgress(10, 1000)
       router.push(`/books/${data.id}`)
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error('Book creation mutation error:', error)
       setCreationStatus('idle')
       setStatusMessage('')
+      setErrorMessage(error.message || 'An error occurred while creating your book')
     },
   })
 
@@ -204,6 +211,7 @@ export default function NewBookContent() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
+    setErrorMessage('')  // Clear any previous error
     createMutation.mutate()
   }
 
@@ -536,6 +544,14 @@ Example:
                 </p>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400">
+            <p className="font-medium">Error creating book</p>
+            <p className="text-sm mt-1">{errorMessage}</p>
           </div>
         )}
 
