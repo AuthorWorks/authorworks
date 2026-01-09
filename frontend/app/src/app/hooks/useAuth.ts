@@ -75,11 +75,18 @@ export function useAuth() {
         return
       }
 
+      // Add timeout to prevent stalling
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
+
       const response = await fetch('/api/auth/me', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        signal: controller.signal,
       })
+
+      clearTimeout(timeoutId)
 
       if (response.ok) {
         const user = await response.json()
@@ -90,16 +97,24 @@ export function useAuth() {
           accessToken: token,
         })
       } else {
+        // Token invalid, clear it
         localStorage.removeItem('accessToken')
         setAuthState(prev => ({ ...prev, isLoading: false }))
       }
     } catch (error) {
+      // On timeout or network error, clear potentially stale token
       console.error('Session check failed:', error)
+      localStorage.removeItem('accessToken')
       setAuthState(prev => ({ ...prev, isLoading: false }))
     }
   }
 
   const initiateAuth = useCallback(async (isSignUp: boolean = false) => {
+    // Clear any stale tokens before starting new auth flow
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('oauth_state')
+    localStorage.removeItem('code_verifier')
+
     // Generate state for CSRF protection
     const state = generateRandomString(32)
     localStorage.setItem('oauth_state', state)
