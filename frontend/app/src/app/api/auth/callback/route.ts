@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       console.log('USER_SERVICE_URL not configured, skipping user sync')
     }
     let userId = userInfo.sub
-    
+
     if (userServiceUrl) {
       try {
         const syncResponse = await fetch(`${userServiceUrl}/api/users/sync`, {

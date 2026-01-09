@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://localhost:3002'
-
 export async function GET(request: NextRequest) {
+  // Read env var inside handler to avoid build-time caching
+  const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://localhost:3002'
+
+  console.log('Auth /me check - LOGTO_ENDPOINT:', LOGTO_ENDPOINT)
+
   try {
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
