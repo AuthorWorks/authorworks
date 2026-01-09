@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { ArrowLeft, BookOpen, ChevronDown, ChevronUp, Feather, FileText, Lightbulb, Loader2, Sparkles, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 
 const GENRES = [
@@ -181,8 +181,15 @@ export default function NewBookContent() {
     },
   })
 
+  // Redirect to home if not authenticated (use effect to avoid render-time navigation)
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push('/')
+    }
+  }, [isLoading, isAuthenticated, router])
+
   // Show loading state while checking auth
-  if (isLoading) {
+  if (isLoading || !isAuthenticated) {
     return (
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="animate-pulse">
@@ -192,12 +199,6 @@ export default function NewBookContent() {
         </div>
       </div>
     )
-  }
-
-  // Redirect to home if not authenticated
-  if (!isAuthenticated) {
-    router.push('/')
-    return null
   }
 
   const handleSubmit = (e: React.FormEvent) => {
