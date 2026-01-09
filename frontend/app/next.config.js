@@ -15,43 +15,8 @@ const nextConfig = {
       },
     ],
   },
-  async rewrites() {
-    const apiGateway = process.env.API_GATEWAY_URL || 'http://localhost:8080'
-    return [
-      {
-        source: '/api/books/:path*',
-        destination: `${apiGateway}/api/books/:path*`,
-      },
-      {
-        source: '/api/chapters/:path*',
-        destination: `${apiGateway}/api/chapters/:path*`,
-      },
-      {
-        source: '/api/storage/:path*',
-        destination: `${apiGateway}/api/storage/:path*`,
-      },
-      {
-        source: '/api/subscription/:path*',
-        destination: `${apiGateway}/api/subscription/:path*`,
-      },
-      {
-        source: '/api/users/:path*',
-        destination: `${apiGateway}/api/users/:path*`,
-      },
-      {
-        source: '/api/search/:path*',
-        destination: `${apiGateway}/api/search/:path*`,
-      },
-      {
-        source: '/api/media/:path*',
-        destination: `${apiGateway}/api/media/:path*`,
-      },
-      {
-        source: '/api/generate/:path*',
-        destination: `${apiGateway}/api/generate/:path*`,
-      },
-    ]
-  },
+  // API routes are now handled directly by Next.js API routes in /app/api
+  // Removed rewrites to external gateway - books, chapters, generate all handled locally
 }
 
 module.exports = nextConfig
