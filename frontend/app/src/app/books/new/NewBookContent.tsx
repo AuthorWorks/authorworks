@@ -45,14 +45,51 @@ export default function NewBookContent() {
   const [outlinePrompt, setOutlinePrompt] = useState('')
   const [chapterCount, setChapterCount] = useState(12)
 
-  // Progress tracking for better UX
-  const [creationStatus, setCreationStatus] = useState<'idle' | 'creating' | 'generating' | 'done'>('idle')
+  // Detailed progress tracking for better UX
+  const [creationStatus, setCreationStatus] = useState<'idle' | 'creating' | 'generating' | 'saving' | 'done'>('idle')
   const [statusMessage, setStatusMessage] = useState('')
+  const [currentStep, setCurrentStep] = useState(0)
+  const [totalSteps, setTotalSteps] = useState(0)
+  const [stepDetails, setStepDetails] = useState<string[]>([])
+
+  // Detailed creation steps matching core engine phases
+  const creationSteps = [
+    // Phase 1: Initial Setup and Context
+    { phase: 'creating', label: 'Braindump', detail: 'Processing your creative ideas...' },
+    { phase: 'creating', label: 'Genre', detail: 'Analyzing genre conventions...' },
+    { phase: 'creating', label: 'Style', detail: 'Defining writing style...' },
+    { phase: 'generating', label: 'Characters', detail: 'Developing character profiles...' },
+    { phase: 'generating', label: 'Synopsis', detail: 'Crafting story synopsis...' },
+    // Phase 2: Book Structure
+    { phase: 'generating', label: 'Outline', detail: 'Generating book outline...' },
+    { phase: 'generating', label: 'Chapters', detail: 'Structuring chapter outlines...' },
+    { phase: 'generating', label: 'Scenes', detail: 'Planning scene breakdowns...' },
+    // Phase 3: Saving
+    { phase: 'saving', label: 'Content', detail: 'Saving chapter content...' },
+    { phase: 'saving', label: 'Metadata', detail: 'Storing book metadata...' },
+    { phase: 'done', label: 'Complete', detail: 'Your book is ready!' },
+  ]
+
+  // Progress animation helper
+  const advanceProgress = async (stepIndex: number, duration: number = 800) => {
+    setCurrentStep(stepIndex)
+    const step = creationSteps[stepIndex]
+    setCreationStatus(step.phase as any)
+    setStatusMessage(step.detail)
+    setStepDetails(prev => [...prev, step.label])
+    await new Promise(resolve => setTimeout(resolve, duration))
+  }
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      setCreationStatus('creating')
-      setStatusMessage('Creating your book...')
+      setTotalSteps(creationSteps.length)
+      setStepDetails([])
+
+      // Step 1: Initializing
+      await advanceProgress(0)
+
+      // Step 2: Storing metadata
+      await advanceProgress(1)
 
       // Build metadata object with advanced creative options
       const metadata: Record<string, any> = {}
@@ -80,10 +117,11 @@ export default function NewBookContent() {
     },
     onSuccess: async (data) => {
       if (generateOutline) {
-        setCreationStatus('generating')
-        setStatusMessage(`Generating ${chapterCount} chapter outline with AI...`)
+        // Steps 3-8: AI generation phases (animated while waiting for API)
+        // Indices: Characters(3), Synopsis(4), Outline(5), Chapters(6), Scenes(7)
+        const generationSteps = [3, 4, 5, 6, 7]
 
-        // Combine all creative inputs into a comprehensive prompt for outline generation
+        // Start AI generation in background
         const fullPrompt = [
           outlinePrompt,
           braindump && `Creative Ideas: ${braindump}`,
@@ -91,7 +129,7 @@ export default function NewBookContent() {
           synopsis && `Story Synopsis: ${synopsis}`,
         ].filter(Boolean).join('\n\n')
 
-        const outlineResponse = await fetch('/api/generate/outline', {
+        const outlinePromise = fetch('/api/generate/outline', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -106,13 +144,35 @@ export default function NewBookContent() {
           }),
         })
 
-        if (!outlineResponse.ok) {
-          console.error('Outline generation failed, but book was created')
+        // Animate through generation steps while waiting
+        let stepIndex = 0
+        const stepInterval = setInterval(async () => {
+          if (stepIndex < generationSteps.length) {
+            await advanceProgress(generationSteps[stepIndex], 0)
+            stepIndex++
+          }
+        }, 2500) // ~2.5s per step for realistic pacing
+
+        try {
+          const outlineResponse = await outlinePromise
+          clearInterval(stepInterval)
+
+          if (!outlineResponse.ok) {
+            console.error('Outline generation failed, but book was created')
+          } else {
+          const result = await outlineResponse.json()
+            // Steps 9-10: Saving (Content, Metadata)
+            await advanceProgress(8, 500)
+            await advanceProgress(9, 500)
+          }
+        } catch (error) {
+          clearInterval(stepInterval)
+          console.error('Outline generation error:', error)
         }
       }
 
-      setCreationStatus('done')
-      setStatusMessage('Your book is ready!')
+      // Final step (Complete)
+      await advanceProgress(10, 1000)
       router.push(`/books/${data.id}`)
     },
     onError: () => {
@@ -389,35 +449,89 @@ Example:
 
         {/* Creation Progress Overlay */}
         {creationStatus !== 'idle' && (
-          <div className="fixed inset-0 bg-slate-950/90 flex items-center justify-center z-50">
-            <div className="text-center max-w-md p-8">
-              <div className="relative mb-6">
-                <div className="w-20 h-20 mx-auto">
+          <div className="fixed inset-0 bg-slate-950/95 flex items-center justify-center z-50">
+            <div className="max-w-lg w-full mx-4 p-8">
+              {/* Phase Header */}
+              <div className="text-center mb-8">
+                <div className="relative w-16 h-16 mx-auto mb-4">
                   {creationStatus === 'creating' && (
-                    <BookOpen className="w-20 h-20 text-indigo-500 animate-pulse" />
+                    <BookOpen className="w-16 h-16 text-indigo-500 animate-pulse" />
                   )}
                   {creationStatus === 'generating' && (
-                    <Sparkles className="w-20 h-20 text-purple-500 animate-bounce" />
+                    <Sparkles className="w-16 h-16 text-purple-500 animate-bounce" />
+                  )}
+                  {creationStatus === 'saving' && (
+                    <FileText className="w-16 h-16 text-emerald-500 animate-pulse" />
                   )}
                   {creationStatus === 'done' && (
-                    <BookOpen className="w-20 h-20 text-green-500" />
+                    <BookOpen className="w-16 h-16 text-green-500" />
+                  )}
+                  {creationStatus !== 'done' && (
+                    <div className="absolute inset-0 -m-2 flex items-center justify-center">
+                      <div className="w-20 h-20 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+                    </div>
                   )}
                 </div>
-                {creationStatus !== 'done' && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-24 h-24 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
-                  </div>
-                )}
+                <h3 className="text-xl font-semibold mb-1">
+                  {creationStatus === 'creating' && 'Phase 1: Initial Setup'}
+                  {creationStatus === 'generating' && 'Phase 2: AI Generation'}
+                  {creationStatus === 'saving' && 'Phase 3: Saving'}
+                  {creationStatus === 'done' && 'Complete!'}
+                </h3>
+                <p className="text-slate-400 text-sm">{statusMessage}</p>
               </div>
-              <h3 className="text-xl font-semibold mb-2">
-                {creationStatus === 'creating' && 'Creating Your Book'}
-                {creationStatus === 'generating' && 'Generating Story Outline'}
-                {creationStatus === 'done' && 'Ready!'}
-              </h3>
-              <p className="text-slate-400">{statusMessage}</p>
+
+              {/* Step Progress */}
+              <div className="space-y-2 mb-6">
+                {creationSteps.map((step, index) => {
+                  const isComplete = index < currentStep
+                  const isCurrent = index === currentStep
+                  const isPending = index > currentStep
+
+                  return (
+                    <div
+                      key={index}
+                      className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-300 ${
+                        isComplete ? 'bg-green-500/10 text-green-400' :
+                        isCurrent ? 'bg-indigo-500/20 text-white' :
+                        'text-slate-600'
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                        isComplete ? 'bg-green-500 text-white' :
+                        isCurrent ? 'bg-indigo-500 text-white' :
+                        'bg-slate-800 text-slate-500'
+                      }`}>
+                        {isComplete ? '✓' : index + 1}
+                      </div>
+                      <span className={`flex-1 ${isCurrent ? 'font-medium' : ''}`}>
+                        {step.label}
+                      </span>
+                      {isCurrent && (
+                        <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Progress Bar */}
+              <div className="mb-4">
+                <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
+                    style={{ width: `${((currentStep + 1) / creationSteps.length) * 100}%` }}
+                  />
+                </div>
+                <p className="text-slate-500 text-xs text-center mt-2">
+                  Step {currentStep + 1} of {creationSteps.length}
+                </p>
+              </div>
+
+              {/* Generating note */}
               {creationStatus === 'generating' && (
-                <p className="text-slate-500 text-sm mt-4">
-                  AI is crafting your chapter structure. This may take 15-30 seconds...
+                <p className="text-slate-500 text-xs text-center">
+                  AI is working through each step...
                 </p>
               )}
             </div>
