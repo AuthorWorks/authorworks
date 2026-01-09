@@ -200,7 +200,11 @@ export function useAuth() {
       console.error('Logout error:', error)
     }
 
+    // Clear local auth state
     localStorage.removeItem('accessToken')
+    localStorage.removeItem('oauth_state')
+    localStorage.removeItem('code_verifier')
+
     setAuthState({
       user: null,
       isAuthenticated: false,
@@ -208,11 +212,8 @@ export function useAuth() {
       accessToken: null,
     })
 
-    const params = new URLSearchParams({
-      client_id: LOGTO_APP_ID,
-      post_logout_redirect_uri: window.location.origin,
-    })
-    window.location.href = `${LOGTO_ENDPOINT}/oidc/session/end?${params.toString()}`
+    // Redirect to home page
+    window.location.href = '/'
   }, [])
 
   return {
