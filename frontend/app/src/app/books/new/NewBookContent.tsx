@@ -190,12 +190,26 @@ export default function NewBookContent() {
     },
     onSuccess: async (data) => {
       if (generateOutline) {
-        // Step 3: Style - Start full generation
+        // Step 3: Style - Start generation
         await advanceProgress(2)
 
         try {
-          // Start full book generation with core engine
-          const genResponse = await fetch('/api/generate/book', {
+          // Build the prompt from creative inputs
+          const fullPrompt = [
+            outlinePrompt,
+            braindump && `Creative Ideas: ${braindump}`,
+            characters && `Characters: ${characters}`,
+            synopsis && `Story Synopsis: ${synopsis}`,
+          ].filter(Boolean).join('\n\n')
+
+          // Step 4: Characters
+          await advanceProgress(3)
+
+          // Step 5: Synopsis
+          await advanceProgress(4)
+
+          // Call outline generation API (creates chapters in database)
+          const outlineResponse = await fetch('/api/generate/outline', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -203,30 +217,43 @@ export default function NewBookContent() {
             },
             body: JSON.stringify({
               book_id: data.id,
-              title,
-              braindump: braindump || outlinePrompt || '',
-              genre: genre || '',
-              style: stylePreset === 'custom' ? customStyle : stylePreset || '',
-              characters: characters || '',
-              synopsis: synopsis || description || '',
+              prompt: fullPrompt || `Generate a compelling ${genre || 'fiction'} novel outline`,
+              genre,
+              style: stylePreset === 'custom' ? customStyle : stylePreset,
               chapter_count: chapterCount,
             }),
           })
 
-          if (!genResponse.ok) {
-            const errorData = await genResponse.json().catch(() => ({ error: 'Unknown error' }))
-            throw new Error(errorData.error || 'Failed to start book generation')
+          // Step 6: Outline
+          await advanceProgress(5)
+
+          if (!outlineResponse.ok) {
+            const errorData = await outlineResponse.json().catch(() => ({ error: 'Unknown error' }))
+            console.error('Outline generation failed:', errorData)
+            // Continue anyway, user can regenerate later
+          } else {
+            const result = await outlineResponse.json()
+            console.log('Outline generated:', result.chapters_created, 'chapters')
+
+            // Step 7: Chapters
+            await advanceProgress(6)
+
+            // Step 8: Scenes
+            await advanceProgress(7)
           }
 
-          const { job_id } = await genResponse.json()
-          console.log('Book generation started, job_id:', job_id)
+          // Step 9: Content (saving)
+          await advanceProgress(8)
 
-          // Poll for status and update UI
-          await pollJobStatus(job_id, data.id)
+          // Step 10: Metadata
+          await advanceProgress(9)
+
+          // Complete
+          await advanceProgress(10, 500)
+          router.push(`/books/${data.id}`)
         } catch (error) {
-          console.error('Full generation error:', error)
-          // If full generation fails, still redirect to book page
-          // User can manually trigger generation later
+          console.error('Generation error:', error)
+          // If generation fails, still redirect to book page
           await advanceProgress(10, 500)
           router.push(`/books/${data.id}`)
         }

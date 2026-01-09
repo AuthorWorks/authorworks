@@ -88,13 +88,17 @@ export async function POST(request: NextRequest) {
     const result = await generatorResponse.json()
     console.log('POST /api/generate/book - Job started:', result.job_id)
 
-    // Store the job ID in the database
+    // Store the job ID in the database using existing schema
     const pool = getPool()
     try {
       await pool.query(
-        `INSERT INTO generation_logs (book_id, user_id, job_id, status, started_at)
-         VALUES ($1, $2, $3, 'pending', NOW())`,
-        [book_id, userId, result.job_id]
+        `INSERT INTO generation_logs (book_id, generation_type, prompt, status, result)
+         VALUES ($1, 'full_book', $2, 'pending', $3)`,
+        [
+          book_id,
+          `Title: ${title}\nGenre: ${genre || ''}\nStyle: ${style || ''}`,
+          JSON.stringify({ job_id: result.job_id, user_id: userId })
+        ]
       )
     } catch (dbError) {
       console.error('Failed to log generation job:', dbError)

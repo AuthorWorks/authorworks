@@ -85,7 +85,7 @@ async fn main() {
         .init();
 
     // Load environment
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     let port = env::var("PORT").unwrap_or_else(|_| "8081".to_string());
     let output_base = env::var("OUTPUT_BASE")
