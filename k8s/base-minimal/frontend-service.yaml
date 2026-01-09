@@ -73,6 +73,12 @@ spec:
         # Database connection for books API
         - name: DATABASE_URL
           value: "postgresql://postgres:homelab_postgres_2024@postgres.databases.svc.cluster.local:5432/authorworks"
+        # AI API key for content generation
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: authorworks-secrets
+              key: anthropic-api-key
         resources:
           requests:
             memory: "256Mi"

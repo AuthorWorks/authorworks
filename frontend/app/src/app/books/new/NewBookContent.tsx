@@ -40,13 +40,20 @@ export default function NewBookContent() {
   const [characters, setCharacters] = useState('')
   const [synopsis, setSynopsis] = useState('')
 
-  // AI generation options
-  const [generateOutline, setGenerateOutline] = useState(false)
+  // AI generation options - ON by default since chapters are core to the engine
+  const [generateOutline, setGenerateOutline] = useState(true)
   const [outlinePrompt, setOutlinePrompt] = useState('')
   const [chapterCount, setChapterCount] = useState(12)
 
+  // Progress tracking for better UX
+  const [creationStatus, setCreationStatus] = useState<'idle' | 'creating' | 'generating' | 'done'>('idle')
+  const [statusMessage, setStatusMessage] = useState('')
+
   const createMutation = useMutation({
     mutationFn: async () => {
+      setCreationStatus('creating')
+      setStatusMessage('Creating your book...')
+
       // Build metadata object with advanced creative options
       const metadata: Record<string, any> = {}
       if (braindump) metadata.braindump = braindump
@@ -73,6 +80,9 @@ export default function NewBookContent() {
     },
     onSuccess: async (data) => {
       if (generateOutline) {
+        setCreationStatus('generating')
+        setStatusMessage(`Generating ${chapterCount} chapter outline with AI...`)
+
         // Combine all creative inputs into a comprehensive prompt for outline generation
         const fullPrompt = [
           outlinePrompt,
@@ -81,7 +91,7 @@ export default function NewBookContent() {
           synopsis && `Story Synopsis: ${synopsis}`,
         ].filter(Boolean).join('\n\n')
 
-        await fetch('/api/generate/outline', {
+        const outlineResponse = await fetch('/api/generate/outline', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -95,8 +105,19 @@ export default function NewBookContent() {
             chapter_count: chapterCount,
           }),
         })
+
+        if (!outlineResponse.ok) {
+          console.error('Outline generation failed, but book was created')
+        }
       }
+
+      setCreationStatus('done')
+      setStatusMessage('Your book is ready!')
       router.push(`/books/${data.id}`)
+    },
+    onError: () => {
+      setCreationStatus('idle')
+      setStatusMessage('')
     },
   })
 
@@ -198,7 +219,7 @@ export default function NewBookContent() {
             <h2 className="text-xl font-semibold flex items-center gap-2">
               <Lightbulb className="h-5 w-5 text-amber-400" />
               Creative Details
-              <span className="text-sm font-normal text-slate-500">(optional)</span>
+              <span className="text-sm font-normal text-slate-500">(helps AI generate better content)</span>
             </h2>
             {showAdvanced ? (
               <ChevronUp className="h-5 w-5 text-slate-400" />
@@ -308,10 +329,10 @@ Example:
             <div>
               <h2 className="text-xl font-semibold flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-purple-400" />
-                AI Outline Generation
+                AI Chapter Outline
               </h2>
               <p className="text-slate-500 text-sm mt-1">
-                Let AI create a chapter-by-chapter outline for your story
+                Generate a chapter-by-chapter story structure (recommended)
               </p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -366,6 +387,43 @@ Example:
           )}
         </div>
 
+        {/* Creation Progress Overlay */}
+        {creationStatus !== 'idle' && (
+          <div className="fixed inset-0 bg-slate-950/90 flex items-center justify-center z-50">
+            <div className="text-center max-w-md p-8">
+              <div className="relative mb-6">
+                <div className="w-20 h-20 mx-auto">
+                  {creationStatus === 'creating' && (
+                    <BookOpen className="w-20 h-20 text-indigo-500 animate-pulse" />
+                  )}
+                  {creationStatus === 'generating' && (
+                    <Sparkles className="w-20 h-20 text-purple-500 animate-bounce" />
+                  )}
+                  {creationStatus === 'done' && (
+                    <BookOpen className="w-20 h-20 text-green-500" />
+                  )}
+                </div>
+                {creationStatus !== 'done' && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-24 h-24 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
+              <h3 className="text-xl font-semibold mb-2">
+                {creationStatus === 'creating' && 'Creating Your Book'}
+                {creationStatus === 'generating' && 'Generating Story Outline'}
+                {creationStatus === 'done' && 'Ready!'}
+              </h3>
+              <p className="text-slate-400">{statusMessage}</p>
+              {creationStatus === 'generating' && (
+                <p className="text-slate-500 text-sm mt-4">
+                  AI is crafting your chapter structure. This may take 15-30 seconds...
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-4">
           <Link href="/books" className="btn-secondary flex-1 justify-center">
             Cancel
@@ -378,12 +436,12 @@ Example:
             {createMutation.isPending ? (
               <>
                 <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                Creating...
+                {generateOutline ? 'Creating & Generating...' : 'Creating...'}
               </>
             ) : (
               <>
-                <BookOpen className="h-5 w-5 mr-2" />
-                Create Book
+                <Sparkles className="h-5 w-5 mr-2" />
+                {generateOutline ? 'Create Book & Generate Outline' : 'Create Book'}
               </>
             )}
           </button>
