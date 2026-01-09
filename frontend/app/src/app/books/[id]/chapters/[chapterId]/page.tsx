@@ -109,7 +109,7 @@ export default function ChapterEditorPage({
   const debouncedSave = useDebouncedCallback(
     useCallback((newContent: string, newTitle: string) => {
       setSaveStatus('saving')
-      saveMutation.mutate({ content: newContent, title: newTitle || null })
+      saveMutation.mutate({ content: newContent, title: newTitle || undefined })
     }, [saveMutation]),
     1500
   )
