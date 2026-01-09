@@ -26,8 +26,27 @@ export function Navbar() {
 
   const isActive = (href: string) => pathname.startsWith(href)
 
-  // Always render unauthenticated navbar on server and during initial hydration
-  if (!mounted || !isAuthenticated) {
+  // Show loading state while checking session
+  if (!mounted || isLoading) {
+    return (
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <Link href="/" className="flex items-center gap-2">
+              <BookOpen className="h-8 w-8 text-indigo-500" />
+              <span className="font-playfair text-xl font-bold gradient-text">AuthorWorks</span>
+            </Link>
+            <div className="flex items-center gap-4">
+              <div className="h-8 w-24 bg-slate-800 rounded animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      </nav>
+    )
+  }
+
+  // Show unauthenticated navbar
+  if (!isAuthenticated) {
     return (
       <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -43,17 +62,15 @@ export function Navbar() {
               </Link>
               <button
                 onClick={signUp}
-                disabled={isLoading}
                 className="btn-secondary"
               >
                 Create Account
               </button>
               <button
                 onClick={login}
-                disabled={isLoading}
                 className="btn-primary"
               >
-                {isLoading ? 'Loading...' : 'Sign In'}
+                Sign In
               </button>
             </div>
           </div>
