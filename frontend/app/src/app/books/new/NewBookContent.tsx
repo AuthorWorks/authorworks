@@ -25,7 +25,7 @@ const STYLE_PRESETS = [
 
 export default function NewBookContent() {
   const router = useRouter()
-  const { isAuthenticated, accessToken } = useAuth()
+  const { isAuthenticated, isLoading, accessToken } = useAuth()
 
   // Basic info
   const [title, setTitle] = useState('')
@@ -100,6 +100,20 @@ export default function NewBookContent() {
     },
   })
 
+  // Show loading state while checking auth
+  if (isLoading) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-slate-700 rounded w-32 mb-4"></div>
+          <div className="h-12 bg-slate-700 rounded w-64 mb-2"></div>
+          <div className="h-4 bg-slate-700 rounded w-48"></div>
+        </div>
+      </div>
+    )
+  }
+
+  // Redirect to home if not authenticated
   if (!isAuthenticated) {
     router.push('/')
     return null
