@@ -9,6 +9,7 @@ resources:
   # logto.yaml excluded - Logto managed by separate cluster service
   - ingress.yaml
   - frontend-service.yaml
+  - book-generator-service.yaml
 
 labels:
 - pairs:

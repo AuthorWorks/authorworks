@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authorworks-book-generator
+  labels:
+    app: authorworks-book-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authorworks-book-generator
+  template:
+    metadata:
+      labels:
+        app: authorworks-book-generator
+    spec:
+      containers:
+        - name: book-generator
+          image: ghcr.io/authorworks/book-generator:homelab
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8081
+          env:
+            - name: PORT
+              value: "8081"
+            - name: OUTPUT_BASE
+              value: "/data/books"
+            - name: RUST_LOG
+              value: "book_generator_server=info,tower_http=info"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: anthropic-api-key
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: database-url
+          volumeMounts:
+            - name: book-data
+              mountPath: /data/books
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: book-data
+          persistentVolumeClaim:
+            claimName: book-generator-pvc
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authorworks-book-generator
+spec:
+  selector:
+    app: authorworks-book-generator
+  ports:
+    - port: 8081
+      targetPort: 8081
+      protocol: TCP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: book-generator-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: local-path

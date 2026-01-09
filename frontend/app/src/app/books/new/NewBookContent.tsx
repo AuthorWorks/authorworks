@@ -81,16 +81,81 @@ export default function NewBookContent() {
     await new Promise(resolve => setTimeout(resolve, duration))
   }
 
+  // Map phase names from book generator to step indices
+  const phaseToStep: Record<string, number> = {
+    'setup': 0,
+    'braindump': 0,
+    'genre': 1,
+    'style': 2,
+    'characters': 3,
+    'synopsis': 4,
+    'outline': 5,
+    'chapters': 6,
+    'scenes': 7,
+    'content': 8,
+    'rendering': 8,
+    'export': 9,
+    'complete': 10,
+  }
+
+  // Poll job status until complete
+  const pollJobStatus = async (jobId: string, bookId: string): Promise<void> => {
+    let attempts = 0
+    const maxAttempts = 300 // 5 minutes max with 1s intervals
+
+    while (attempts < maxAttempts) {
+      try {
+        const response = await fetch(`/api/generate/book/status/${jobId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to get job status')
+        }
+
+        const status = await response.json()
+        console.log('Job status:', status)
+
+        // Update UI based on job status
+        const stepIndex = phaseToStep[status.phase] ?? currentStep
+        if (stepIndex !== currentStep) {
+          await advanceProgress(stepIndex, 0)
+        }
+        setStatusMessage(status.current_step)
+
+        if (status.status === 'completed') {
+          await advanceProgress(10, 500)
+          router.push(`/books/${bookId}`)
+          return
+        }
+
+        if (status.status === 'failed') {
+          throw new Error(status.error || 'Book generation failed')
+        }
+
+        if (status.status === 'cancelled') {
+          throw new Error('Book generation was cancelled')
+        }
+
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        attempts++
+      } catch (error) {
+        console.error('Polling error:', error)
+        throw error
+      }
+    }
+
+    throw new Error('Book generation timed out')
+  }
+
   const createMutation = useMutation({
     mutationFn: async () => {
       setTotalSteps(creationSteps.length)
       setStepDetails([])
 
-      // Step 1: Initializing
+      // Step 1: Braindump - Processing
       await advanceProgress(0)
-
-      // Step 2: Storing metadata
-      await advanceProgress(1)
 
       // Build metadata object with advanced creative options
       const metadata: Record<string, any> = {}
@@ -99,6 +164,9 @@ export default function NewBookContent() {
       if (stylePreset === 'custom' && customStyle) metadata.custom_style = customStyle
       if (characters) metadata.characters = characters
       if (synopsis) metadata.synopsis = synopsis
+
+      // Step 2: Genre - Create book record
+      await advanceProgress(1)
 
       const response = await fetch('/api/books', {
         method: 'POST',
@@ -122,63 +190,51 @@ export default function NewBookContent() {
     },
     onSuccess: async (data) => {
       if (generateOutline) {
-        // Steps 3-8: AI generation phases (animated while waiting for API)
-        // Indices: Characters(3), Synopsis(4), Outline(5), Chapters(6), Scenes(7)
-        const generationSteps = [3, 4, 5, 6, 7]
-
-        // Start AI generation in background
-        const fullPrompt = [
-          outlinePrompt,
-          braindump && `Creative Ideas: ${braindump}`,
-          characters && `Characters: ${characters}`,
-          synopsis && `Story Synopsis: ${synopsis}`,
-        ].filter(Boolean).join('\n\n')
-
-        const outlinePromise = fetch('/api/generate/outline', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            book_id: data.id,
-            prompt: fullPrompt || `Generate a compelling ${genre || 'fiction'} novel outline`,
-            genre,
-            style: stylePreset === 'custom' ? customStyle : stylePreset,
-            chapter_count: chapterCount,
-          }),
-        })
-
-        // Animate through generation steps while waiting
-        let stepIndex = 0
-        const stepInterval = setInterval(async () => {
-          if (stepIndex < generationSteps.length) {
-            await advanceProgress(generationSteps[stepIndex], 0)
-            stepIndex++
-          }
-        }, 2500) // ~2.5s per step for realistic pacing
+        // Step 3: Style - Start full generation
+        await advanceProgress(2)
 
         try {
-          const outlineResponse = await outlinePromise
-          clearInterval(stepInterval)
+          // Start full book generation with core engine
+          const genResponse = await fetch('/api/generate/book', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              book_id: data.id,
+              title,
+              braindump: braindump || outlinePrompt || '',
+              genre: genre || '',
+              style: stylePreset === 'custom' ? customStyle : stylePreset || '',
+              characters: characters || '',
+              synopsis: synopsis || description || '',
+              chapter_count: chapterCount,
+            }),
+          })
 
-          if (!outlineResponse.ok) {
-            console.error('Outline generation failed, but book was created')
-          } else {
-          const result = await outlineResponse.json()
-            // Steps 9-10: Saving (Content, Metadata)
-            await advanceProgress(8, 500)
-            await advanceProgress(9, 500)
+          if (!genResponse.ok) {
+            const errorData = await genResponse.json().catch(() => ({ error: 'Unknown error' }))
+            throw new Error(errorData.error || 'Failed to start book generation')
           }
-        } catch (error) {
-          clearInterval(stepInterval)
-          console.error('Outline generation error:', error)
-        }
-      }
 
-      // Final step (Complete)
-      await advanceProgress(10, 1000)
-      router.push(`/books/${data.id}`)
+          const { job_id } = await genResponse.json()
+          console.log('Book generation started, job_id:', job_id)
+
+          // Poll for status and update UI
+          await pollJobStatus(job_id, data.id)
+        } catch (error) {
+          console.error('Full generation error:', error)
+          // If full generation fails, still redirect to book page
+          // User can manually trigger generation later
+          await advanceProgress(10, 500)
+          router.push(`/books/${data.id}`)
+        }
+      } else {
+        // No generation requested, just redirect
+        await advanceProgress(10, 500)
+        router.push(`/books/${data.id}`)
+      }
     },
     onError: (error: Error) => {
       console.error('Book creation mutation error:', error)
