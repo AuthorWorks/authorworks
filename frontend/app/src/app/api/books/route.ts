@@ -11,19 +11,32 @@ function getPool() {
 // Helper to get user ID from auth token
 async function getUserId(request: NextRequest): Promise<string | null> {
   const authHeader = request.headers.get('authorization')
-  if (!authHeader?.startsWith('Bearer ')) return null
+  console.log('getUserId - authHeader present:', !!authHeader)
+  if (!authHeader?.startsWith('Bearer ')) {
+    console.log('getUserId - No Bearer token')
+    return null
+  }
 
   const token = authHeader.substring(7)
+  console.log('getUserId - Token length:', token.length)
   const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://logto.security.svc.cluster.local:3001'
+  console.log('getUserId - LOGTO_ENDPOINT:', LOGTO_ENDPOINT)
 
   try {
     const response = await fetch(`${LOGTO_ENDPOINT}/oidc/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-    if (!response.ok) return null
+    console.log('getUserId - Logto response status:', response.status)
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.log('getUserId - Logto error:', errorText)
+      return null
+    }
     const userInfo = await response.json()
+    console.log('getUserId - Got user sub:', userInfo.sub)
     return userInfo.sub
-  } catch {
+  } catch (error) {
+    console.error('getUserId - Exception:', error)
     return null
   }
 }
