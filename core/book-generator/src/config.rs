@@ -30,33 +30,33 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Result<Self> {
-        dotenv::dotenv().ok();
-        
+        dotenvy::dotenv().ok();
+
         let get_env_or_default = |key: &str, default: &str| -> String {
             std::env::var(key).unwrap_or_else(|_| default.to_string())
         };
-        
+
         let parse_env_or_default = |key: &str, default: usize| -> usize {
             std::env::var(key)
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(default)
         };
-        
+
         let parse_u64_env_or_default = |key: &str, default: u64| -> u64 {
             std::env::var(key)
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(default)
         };
-        
+
         let parse_bool_env_or_default = |key: &str, default: bool| -> bool {
             std::env::var(key)
                 .ok()
                 .and_then(|v| v.to_lowercase().parse::<bool>().ok())
                 .unwrap_or(default)
         };
-        
+
         Ok(Self {
             llm_provider: get_env_or_default("LLM_PROVIDER", "anthropic"),
             openai_api_key: std::env::var("OPENAI_API_KEY")

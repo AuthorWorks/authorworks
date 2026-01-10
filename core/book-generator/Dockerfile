@@ -1,5 +1,5 @@
-# Build stage
-FROM rust:1.82-bookworm AS builder
+# Build stage - use Rust nightly for edition2024 support (needed by ignore crate)
+FROM rustlang/rust:nightly-bookworm AS builder
 
 WORKDIR /app
 

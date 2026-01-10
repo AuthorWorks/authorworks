@@ -195,12 +195,12 @@ export default function NewBookContent() {
 
         try {
           // Build the prompt from creative inputs
-          const fullPrompt = [
-            outlinePrompt,
-            braindump && `Creative Ideas: ${braindump}`,
-            characters && `Characters: ${characters}`,
-            synopsis && `Story Synopsis: ${synopsis}`,
-          ].filter(Boolean).join('\n\n')
+        const fullPrompt = [
+          outlinePrompt,
+          braindump && `Creative Ideas: ${braindump}`,
+          characters && `Characters: ${characters}`,
+          synopsis && `Story Synopsis: ${synopsis}`,
+        ].filter(Boolean).join('\n\n')
 
           // Step 4: Characters
           await advanceProgress(3)
@@ -210,19 +210,19 @@ export default function NewBookContent() {
 
           // Call outline generation API (creates chapters in database)
           const outlineResponse = await fetch('/api/generate/outline', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({
-              book_id: data.id,
-              prompt: fullPrompt || `Generate a compelling ${genre || 'fiction'} novel outline`,
-              genre,
-              style: stylePreset === 'custom' ? customStyle : stylePreset,
-              chapter_count: chapterCount,
-            }),
-          })
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            book_id: data.id,
+            prompt: fullPrompt || `Generate a compelling ${genre || 'fiction'} novel outline`,
+            genre,
+            style: stylePreset === 'custom' ? customStyle : stylePreset,
+            chapter_count: chapterCount,
+          }),
+        })
 
           // Step 6: Outline
           await advanceProgress(5)
@@ -274,7 +274,7 @@ export default function NewBookContent() {
   // Redirect to home if not authenticated (use effect to avoid render-time navigation)
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.push('/')
+    router.push('/')
     }
   }, [isLoading, isAuthenticated, router])
 

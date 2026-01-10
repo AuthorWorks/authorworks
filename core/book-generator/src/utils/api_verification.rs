@@ -1,5 +1,5 @@
 use std::error::Error;
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use std::time::{Duration, Instant};
 use tracing::{warn, info};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -45,7 +45,7 @@ static API_STATUS_MONITOR: Lazy<Arc<AtomicBool>> = Lazy::new(|| {
 pub async fn check_api_availability_lightweight() -> Result<bool, BoxedError> {
     // First check the global monitor status
     let monitor_status = API_STATUS_MONITOR.load(Ordering::SeqCst);
-    
+
     // If the monitor indicates API is available, check the cache first
     // Otherwise, proceed with a fresh check
     if monitor_status {
@@ -57,21 +57,21 @@ pub async fn check_api_availability_lightweight() -> Result<bool, BoxedError> {
             }
         }
     }
-    
+
     // No recent cache, perform the actual check
     dotenv().ok();
-    
+
     // Get API key from environment
     let api_key = match std::env::var("ANTHROPIC_API_KEY") {
         Ok(key) => key,
         Err(_) => return Err("ANTHROPIC_API_KEY environment variable not set".into()),
     };
-    
+
     // Create a client with a short timeout
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()?;
-    
+
     // Make a GET request to the models endpoint
     let response = client
         .get("https://api.anthropic.com/v1/models")
@@ -79,7 +79,7 @@ pub async fn check_api_availability_lightweight() -> Result<bool, BoxedError> {
         .header("anthropic-version", "2023-06-01")
         .send()
         .await;
-    
+
     let status = match response {
         Ok(res) => {
             let status = res.status();
@@ -93,7 +93,7 @@ pub async fn check_api_availability_lightweight() -> Result<bool, BoxedError> {
                     }
                     should_log
                 };
-                
+
                 if should_log {
                     info!("Anthropic API is available (status: {})", status);
                 }
@@ -115,12 +115,12 @@ pub async fn check_api_availability_lightweight() -> Result<bool, BoxedError> {
             }
         }
     };
-    
+
     // Update the cache with the new result
     let mut cache = API_STATUS_CACHE.lock().unwrap();
     cache.last_check_time = Instant::now();
     cache.last_status = status;
-    
+
     Ok(status)
 }
 
@@ -145,25 +145,25 @@ pub fn start_api_status_monitor(_check_interval: Duration) -> Arc<AtomicBool> {
 fn start_api_status_monitor_internal(check_interval: Duration) -> Arc<AtomicBool> {
     let api_available = Arc::new(AtomicBool::new(true)); // Assume available initially
     let api_status_clone = api_available.clone();
-    
+
     tokio::spawn(async move {
         loop {
             // Use the lightweight check that doesn't consume tokens
             let available = (check_api_availability_lightweight().await).unwrap_or(false);
-            
+
             api_status_clone.store(available, Ordering::SeqCst);
-            
+
             // Adjust sleep time based on API status
             let sleep_duration = if available {
                 check_interval
             } else {
                 Duration::from_secs(5) // Check more frequently when API is down
             };
-            
+
             tokio::time::sleep(sleep_duration).await;
         }
     });
-    
+
     api_available
 }
 
@@ -173,7 +173,7 @@ pub async fn wait_for_api_availability(timeout: Option<Duration>) -> bool {
     let start_time = std::time::Instant::now();
     let mut backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(30);
-    
+
     loop {
         // Check if we've exceeded the timeout
         if let Some(timeout_duration) = timeout {
@@ -182,14 +182,14 @@ pub async fn wait_for_api_availability(timeout: Option<Duration>) -> bool {
                 return false;
             }
         }
-        
+
         // First check the global monitor status to avoid unnecessary API calls
         let monitor_status = API_STATUS_MONITOR.load(Ordering::SeqCst);
         if monitor_status {
             info!("Proceeding with operation");
             return true;
         }
-        
+
         // If monitor says API is down, do a direct check to confirm
         let available = match check_api_availability_lightweight().await {
             Ok(status) => status,
@@ -198,14 +198,14 @@ pub async fn wait_for_api_availability(timeout: Option<Duration>) -> bool {
                 false // Assume unavailable on error
             }
         };
-        
+
         if available {
             info!("Proceeding with operation");
             return true;
         } else {
             warn!("Anthropic API is overloaded, waiting {:?} before checking again", backoff);
             tokio::time::sleep(backoff).await;
-            
+
             // Increase backoff with a cap
             backoff = std::cmp::min(Duration::from_millis((backoff.as_millis() as f32 * 1.5) as u64), max_backoff);
         }
@@ -222,7 +222,7 @@ pub async fn check_anthropic_api_status() -> Result<bool, BoxedError> {
         // If the monitor says the API is available, return true
         return Ok(true);
     }
-    
+
     // If the monitor says the API is not available, do a direct check
     // to get the most up-to-date status
     check_api_availability_lightweight().await
