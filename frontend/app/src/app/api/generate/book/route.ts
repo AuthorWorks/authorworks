@@ -45,11 +45,13 @@ export async function POST(request: NextRequest) {
     const {
       book_id,
       title,
+      description,
       braindump,
       genre,
       style,
       characters,
       synopsis,
+      outline_prompt,
       chapter_count,
       author_name,
     } = body
@@ -69,11 +71,13 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         book_id,
         title,
+        description: description || '',
         braindump: braindump || '',
         genre: genre || '',
         style: style || '',
         characters: characters || '',
         synopsis: synopsis || '',
+        outline_prompt: outline_prompt || '',
         chapter_count: chapter_count || 12,
         author_name: author_name || 'AuthorWorks User',
       }),
@@ -96,7 +100,7 @@ export async function POST(request: NextRequest) {
          VALUES ($1, 'full_book', $2, 'pending', $3)`,
         [
           book_id,
-          `Title: ${title}\nGenre: ${genre || ''}\nStyle: ${style || ''}`,
+          `Title: ${title}\nDescription: ${description || ''}\nGenre: ${genre || ''}\nStyle: ${style || ''}\nOutline Prompt: ${outline_prompt || ''}`,
           JSON.stringify({ job_id: result.job_id, user_id: userId })
         ]
       )

@@ -204,11 +204,13 @@ export default function NewBookContent() {
             body: JSON.stringify({
               book_id: data.id,
               title,
+              description: description || '',
               braindump: braindump || '',
               genre: genre || '',
               style: stylePreset === 'custom' ? customStyle : stylePreset,
               characters: characters || '',
               synopsis: synopsis || '',
+              outline_prompt: outlinePrompt || '',
               chapter_count: chapterCount,
               author_name: 'AuthorWorks User',
             }),
@@ -226,10 +228,8 @@ export default function NewBookContent() {
           console.log('Book generation started, job_id:', job_id)
 
           // Poll for job status and update UI with real progress
-          await pollJobStatus(job_id)
-
-          // After completion, redirect to book page
-          router.push(`/books/${data.id}`)
+          // Note: pollJobStatus handles redirect on success
+          await pollJobStatus(job_id, data.id)
         } catch (error) {
           console.error('Generation error:', error)
           setErrorMessage(error instanceof Error ? error.message : 'Book generation failed')
