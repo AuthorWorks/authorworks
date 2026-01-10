@@ -25,7 +25,31 @@ spec:
                 name: authorworks-frontend
                 port:
                   number: 3000
-          # Other API routes go to backend
+          # Books API routes go to frontend (Next.js API routes)
+          - path: /api/books
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-frontend
+                port:
+                  number: 3000
+          # Generate API routes go to frontend (Next.js API routes)
+          - path: /api/generate
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-frontend
+                port:
+                  number: 3000
+          # Dashboard API routes go to frontend (Next.js API routes)
+          - path: /api/dashboard
+            pathType: Prefix
+            backend:
+              service:
+                name: authorworks-frontend
+                port:
+                  number: 3000
+          # Other API routes go to backend (legacy)
           - path: /api
             pathType: Prefix
             backend:
