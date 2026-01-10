@@ -190,72 +190,50 @@ export default function NewBookContent() {
     },
     onSuccess: async (data) => {
       if (generateOutline) {
-        // Step 3: Style - Start generation
+        // Step 3: Style - Start full book generation via core engine
         await advanceProgress(2)
 
         try {
-          // Build the prompt from creative inputs
-        const fullPrompt = [
-          outlinePrompt,
-          braindump && `Creative Ideas: ${braindump}`,
-          characters && `Characters: ${characters}`,
-          synopsis && `Story Synopsis: ${synopsis}`,
-        ].filter(Boolean).join('\n\n')
+          // Start full book generation job using the core engine
+          const generationResponse = await fetch('/api/generate/book', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              book_id: data.id,
+              title,
+              braindump: braindump || '',
+              genre: genre || '',
+              style: stylePreset === 'custom' ? customStyle : stylePreset,
+              characters: characters || '',
+              synopsis: synopsis || '',
+              chapter_count: chapterCount,
+              author_name: 'AuthorWorks User',
+            }),
+          })
 
-          // Step 4: Characters
-          await advanceProgress(3)
-
-          // Step 5: Synopsis
-          await advanceProgress(4)
-
-          // Call outline generation API (creates chapters in database)
-          const outlineResponse = await fetch('/api/generate/outline', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            book_id: data.id,
-            prompt: fullPrompt || `Generate a compelling ${genre || 'fiction'} novel outline`,
-            genre,
-            style: stylePreset === 'custom' ? customStyle : stylePreset,
-            chapter_count: chapterCount,
-          }),
-        })
-
-          // Step 6: Outline
-          await advanceProgress(5)
-
-          if (!outlineResponse.ok) {
-            const errorData = await outlineResponse.json().catch(() => ({ error: 'Unknown error' }))
-            console.error('Outline generation failed:', errorData)
-            // Continue anyway, user can regenerate later
-          } else {
-            const result = await outlineResponse.json()
-            console.log('Outline generated:', result.chapters_created, 'chapters')
-
-            // Step 7: Chapters
-            await advanceProgress(6)
-
-            // Step 8: Scenes
-            await advanceProgress(7)
+          if (!generationResponse.ok) {
+            const errorData = await generationResponse.json().catch(() => ({ error: 'Unknown error' }))
+            console.error('Book generation failed to start:', errorData)
+            setErrorMessage(errorData.error || 'Failed to start book generation')
+            setCreationStatus('idle')
+            return
           }
 
-          // Step 9: Content (saving)
-          await advanceProgress(8)
+          const { job_id } = await generationResponse.json()
+          console.log('Book generation started, job_id:', job_id)
 
-          // Step 10: Metadata
-          await advanceProgress(9)
+          // Poll for job status and update UI with real progress
+          await pollJobStatus(job_id)
 
-          // Complete
-          await advanceProgress(10, 500)
+          // After completion, redirect to book page
           router.push(`/books/${data.id}`)
         } catch (error) {
           console.error('Generation error:', error)
-          // If generation fails, still redirect to book page
-          await advanceProgress(10, 500)
-          router.push(`/books/${data.id}`)
+          setErrorMessage(error instanceof Error ? error.message : 'Book generation failed')
+          setCreationStatus('idle')
         }
       } else {
         // No generation requested, just redirect
