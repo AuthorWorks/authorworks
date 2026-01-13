@@ -47,7 +47,7 @@ impl Genre {
         } else {
             println!("Do you want to input the genre manually? (Y/n)");
             let manual_input = crate::utils::input::get_user_input("")?.to_lowercase();
-            
+
             if manual_input != "n" {
                 let name = get_multiline_input("Enter genre name:")?;
                 let description = get_multiline_input("Enter genre description:")?;
@@ -109,9 +109,16 @@ impl Genre {
                 description: parts[1].trim().to_string(),
             })
         } else {
-            Err(BookGeneratorError::SerializationError(
-                format!("Invalid genre format: expected 'name: description', got '{}'", s)
-            ))
+            // Handle plain genre names without description
+            let name = s.trim().to_string();
+            if name.is_empty() {
+                Ok(Self::default())
+            } else {
+                Ok(Self {
+                    name: name.clone(),
+                    description: format!("A {} story", name.to_lowercase()),
+                })
+            }
         }
     }
 
@@ -123,9 +130,16 @@ impl Genre {
                 description: parts[1].trim().to_string(),
             })
         } else {
-            Err(BookGeneratorError::SerializationError(
-                format!("Invalid genre format: expected 'name: description', got '{}'", s)
-            ))
+            // Handle plain genre names without description
+            let name = s.trim().to_string();
+            if name.is_empty() {
+                Ok(Self::default())
+            } else {
+                Ok(Self {
+                    name: name.clone(),
+                    description: format!("A {} story", name.to_lowercase()),
+                })
+            }
         }
     }
 }
