@@ -90,9 +90,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            NEXT_PUBLIC_LOGTO_ENDPOINT=${{ secrets.NEXT_PUBLIC_LOGTO_ENDPOINT }}
-            NEXT_PUBLIC_LOGTO_APP_ID=${{ secrets.NEXT_PUBLIC_LOGTO_APP_ID }}
-            NEXT_PUBLIC_REDIRECT_URI=${{ secrets.NEXT_PUBLIC_REDIRECT_URI }}
+            NEXT_PUBLIC_LOGTO_ENDPOINT=https://auth.leopaska.xyz
+            NEXT_PUBLIC_LOGTO_APP_ID=authorworks
+            NEXT_PUBLIC_REDIRECT_URI=https://author.works/callback
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
