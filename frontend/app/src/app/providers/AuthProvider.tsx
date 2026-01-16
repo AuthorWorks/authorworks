@@ -144,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       state,
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
+      prompt: 'login', // Force login screen, don't auto-login with existing session
     })
 
     // Add interaction mode for sign-up flow
