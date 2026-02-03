@@ -73,12 +73,20 @@ spec:
         # Database connection for books API
         - name: DATABASE_URL
           value: "postgresql://postgres:homelab_postgres_2024@postgres.databases.svc.cluster.local:5432/authorworks"
-        # AI API key for content generation
+        # AI Provider configuration (ollama, anthropic, or openai)
+        - name: AI_PROVIDER
+          value: "ollama"
+        - name: OLLAMA_BASE_URL
+          value: "http://192.168.1.200:11434"
+        - name: AI_MODEL
+          value: "deepseek-coder-v2:16b"
+        # Optional API keys (only needed for respective providers)
         - name: ANTHROPIC_API_KEY
           valueFrom:
             secretKeyRef:
               name: authorworks-secrets
               key: anthropic-api-key
+              optional: true
         # Book generator service URL
         - name: BOOK_GENERATOR_URL
           value: "http://authorworks-book-generator.authorworks.svc.cluster.local:8081"

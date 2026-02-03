@@ -1,6 +1,7 @@
 //! AuthorWorks Content Worker
 //!
-//! Background worker for AI content generation using Anthropic Claude API.
+//! Background worker for AI content generation supporting multiple LLM providers.
+//! Uses the shared book_generator library for LLM abstraction (Anthropic, OpenAI, Ollama).
 //! Processes jobs from the queue and generates book outlines, chapters, and content enhancements.
 
 use anyhow::{Context, Result};
@@ -12,11 +13,10 @@ use tokio::time::sleep;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-mod anthropic;
 mod database;
 mod prompts;
 
-use anthropic::AnthropicClient;
+use book_generator::llm;
 use database::Database;
 
 #[tokio::main]
@@ -26,6 +26,7 @@ async fn main() -> Result<()> {
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("content_worker=info".parse()?)
+                .add_directive("book_generator=info".parse()?),
         )
         .init();
 
@@ -34,15 +35,22 @@ async fn main() -> Result<()> {
     // Load configuration
     let config = Config::from_env()?;
     
-    // Initialize clients
-    let db = Database::new(&config.database_url).await?;
-    let anthropic = AnthropicClient::new(&config.anthropic_api_key);
+    // Initialize LLM client
+    let llm_client = llm::create_client()
+        .map_err(|e| anyhow::anyhow!("Failed to create LLM client: {}", e))?;
 
-    info!("Connected to database and Anthropic API");
+    // Initialize database
+    let db = Database::new(&config.database_url).await?;
+
+    info!(
+        "Connected to database. LLM provider: {}, model: {}",
+        config.llm_provider,
+        config.model
+    );
 
     // Main processing loop
     loop {
-        match process_next_job(&db, &anthropic).await {
+        match process_next_job(&db, &llm_client, &config).await {
             Ok(true) => {
                 // Job processed, continue immediately
                 continue;
@@ -62,23 +70,23 @@ async fn main() -> Result<()> {
 #[derive(Debug)]
 struct Config {
     database_url: String,
-    anthropic_api_key: String,
+    llm_provider: String,
+    model: String,
     rabbitmq_url: Option<String>,
 }
 
 impl Config {
     fn from_env() -> Result<Self> {
         Ok(Self {
-            database_url: env::var("DATABASE_URL")
-                .context("DATABASE_URL not set")?,
-            anthropic_api_key: env::var("ANTHROPIC_API_KEY")
-                .context("ANTHROPIC_API_KEY not set")?,
+            database_url: env::var("DATABASE_URL").context("DATABASE_URL not set")?,
+            llm_provider: env::var("LLM_PROVIDER").unwrap_or_else(|_| "ollama".to_string()),
+            model: env::var("MODEL").unwrap_or_else(|_| "deepseek-coder-v2:16b".to_string()),
             rabbitmq_url: env::var("RABBITMQ_URL").ok(),
         })
     }
 }
 
-async fn process_next_job(db: &Database, anthropic: &AnthropicClient) -> Result<bool> {
+async fn process_next_job(db: &Database, llm_client: &llm::Client, config: &Config) -> Result<bool> {
     // Get next pending job
     let job = match db.get_next_content_job().await? {
         Some(j) => j,
@@ -92,9 +100,9 @@ async fn process_next_job(db: &Database, anthropic: &AnthropicClient) -> Result<
 
     // Process based on job type
     let result = match job.job_type.as_str() {
-        "outline" => generate_outline(db, anthropic, &job).await,
-        "chapter" => generate_chapter(db, anthropic, &job).await,
-        "enhance" => enhance_content(db, anthropic, &job).await,
+        "outline" => generate_outline(db, llm_client, config, &job).await,
+        "chapter" => generate_chapter(db, llm_client, config, &job).await,
+        "enhance" => enhance_content(db, llm_client, config, &job).await,
         other => {
             warn!("Unknown job type: {}", other);
             Err(anyhow::anyhow!("Unknown job type: {}", other))
@@ -119,30 +127,42 @@ async fn process_next_job(db: &Database, anthropic: &AnthropicClient) -> Result<
 // Outline Generation
 //=============================================================================
 
-async fn generate_outline(db: &Database, anthropic: &AnthropicClient, job: &ContentJob) -> Result<serde_json::Value> {
+async fn generate_outline(
+    db: &Database,
+    llm_client: &llm::Client,
+    config: &Config,
+    job: &ContentJob,
+) -> Result<serde_json::Value> {
     let input: OutlineInput = serde_json::from_value(job.input.clone())?;
-    
+
     // Get book details
-    let book = db.get_book(&input.book_id).await?
+    let book = db
+        .get_book(&input.book_id)
+        .await?
         .ok_or_else(|| anyhow::anyhow!("Book not found"))?;
 
-    // Build prompt
-    let prompt = prompts::build_outline_prompt(
+    // Build prompt with system context included
+    let system_prompt = "You are a professional author and book outliner. Create detailed, compelling book outlines.";
+    let user_prompt = prompts::build_outline_prompt(
         &book.title,
         book.description.as_deref().unwrap_or(""),
-        input.genre.as_deref().unwrap_or(&book.genre.unwrap_or_default()),
+        input
+            .genre
+            .as_deref()
+            .unwrap_or(&book.genre.unwrap_or_default()),
         input.style.as_deref().unwrap_or("engaging and modern"),
         input.chapter_count.unwrap_or(10),
         &input.prompt,
     );
+    
+    // Combine system and user prompts for the LLM
+    let full_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
 
-    // Call Claude API
-    let response = anthropic.create_message(
-        "claude-sonnet-4-20250514",
-        8000,
-        &prompt,
-        Some("You are a professional author and book outliner. Create detailed, compelling book outlines.")
-    ).await?;
+    // Call LLM API
+    let result = llm_client.generate_with_options(&config.model, &full_prompt, Some(8000))
+        .await
+        .map_err(|e| anyhow::anyhow!("LLM generation failed: {}", e))?;
+    let response = result.text;
 
     // Parse response into structured outline
     let outline = parse_outline_response(&response)?;
@@ -154,15 +174,20 @@ async fn generate_outline(db: &Database, anthropic: &AnthropicClient, job: &Cont
             &chapter.title,
             (i + 1) as i32,
             Some(&chapter.outline),
-        ).await?;
+        )
+        .await?;
     }
 
     // Update book metadata
-    db.update_book_metadata(&input.book_id, serde_json::json!({
-        "outline_generated": true,
-        "synopsis": outline.synopsis,
-        "themes": outline.themes
-    })).await?;
+    db.update_book_metadata(
+        &input.book_id,
+        serde_json::json!({
+            "outline_generated": true,
+            "synopsis": outline.synopsis,
+            "themes": outline.themes
+        }),
+    )
+    .await?;
 
     Ok(serde_json::to_value(&outline)?)
 }
@@ -204,9 +229,13 @@ fn parse_outline_response(response: &str) -> Result<BookOutline> {
 
     for line in response.lines() {
         let line = line.trim();
-        
+
         if line.starts_with("Synopsis:") || line.starts_with("## Synopsis") {
-            synopsis = line.trim_start_matches("Synopsis:").trim_start_matches("## Synopsis").trim().to_string();
+            synopsis = line
+                .trim_start_matches("Synopsis:")
+                .trim_start_matches("## Synopsis")
+                .trim()
+                .to_string();
         } else if line.starts_with("Themes:") || line.starts_with("## Themes") {
             // Next lines are themes
         } else if line.starts_with("- ") && themes.len() < 10 && chapters.is_empty() {
@@ -227,7 +256,11 @@ fn parse_outline_response(response: &str) -> Result<BookOutline> {
             });
         } else if let Some(ref mut ch) = current_chapter {
             if line.starts_with("- ") || line.starts_with("* ") {
-                ch.key_events.push(line.trim_start_matches("- ").trim_start_matches("* ").to_string());
+                ch.key_events.push(
+                    line.trim_start_matches("- ")
+                        .trim_start_matches("* ")
+                        .to_string(),
+                );
             } else if !line.is_empty() {
                 if !ch.outline.is_empty() {
                     ch.outline.push(' ');
@@ -245,7 +278,9 @@ fn parse_outline_response(response: &str) -> Result<BookOutline> {
     }
 
     if chapters.is_empty() {
-        return Err(anyhow::anyhow!("Failed to parse outline - no chapters found"));
+        return Err(anyhow::anyhow!(
+            "Failed to parse outline - no chapters found"
+        ));
     }
 
     Ok(BookOutline {
@@ -259,21 +294,33 @@ fn parse_outline_response(response: &str) -> Result<BookOutline> {
 // Chapter Generation
 //=============================================================================
 
-async fn generate_chapter(db: &Database, anthropic: &AnthropicClient, job: &ContentJob) -> Result<serde_json::Value> {
+async fn generate_chapter(
+    db: &Database,
+    llm_client: &llm::Client,
+    config: &Config,
+    job: &ContentJob,
+) -> Result<serde_json::Value> {
     let input: ChapterInput = serde_json::from_value(job.input.clone())?;
-    
+
     // Get chapter and book details
-    let chapter = db.get_chapter(&input.chapter_id).await?
+    let chapter = db
+        .get_chapter(&input.chapter_id)
+        .await?
         .ok_or_else(|| anyhow::anyhow!("Chapter not found"))?;
-    let book = db.get_book(&chapter.book_id).await?
+    let book = db
+        .get_book(&chapter.book_id)
+        .await?
         .ok_or_else(|| anyhow::anyhow!("Book not found"))?;
 
     // Get previous chapters for context
-    let previous_chapters = db.get_previous_chapters(&chapter.book_id, chapter.chapter_number).await?;
+    let previous_chapters = db
+        .get_previous_chapters(&chapter.book_id, chapter.chapter_number)
+        .await?;
     let context = build_chapter_context(&previous_chapters);
 
-    // Build prompt
-    let prompt = prompts::build_chapter_prompt(
+    // Build prompt with system context
+    let system_prompt = "You are a skilled fiction writer. Write engaging, immersive prose that brings stories to life.";
+    let user_prompt = prompts::build_chapter_prompt(
         &book.title,
         &chapter.title,
         chapter.chapter_number,
@@ -281,20 +328,21 @@ async fn generate_chapter(db: &Database, anthropic: &AnthropicClient, job: &Cont
         &context,
         input.style.as_deref().unwrap_or("engaging, descriptive"),
     );
+    
+    let full_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
 
-    // Call Claude API with higher token limit for full chapters
-    let response = anthropic.create_message(
-        "claude-sonnet-4-20250514",
-        16000,
-        &prompt,
-        Some("You are a skilled fiction writer. Write engaging, immersive prose that brings stories to life.")
-    ).await?;
+    // Call LLM API with higher token limit for full chapters
+    let result = llm_client.generate_with_options(&config.model, &full_prompt, Some(16000))
+        .await
+        .map_err(|e| anyhow::anyhow!("LLM generation failed: {}", e))?;
+    let response = result.text;
 
     // Calculate word count
     let word_count = response.split_whitespace().count() as i32;
 
     // Update chapter with generated content
-    db.update_chapter_content(&chapter.id, &response, word_count).await?;
+    db.update_chapter_content(&chapter.id, &response, word_count)
+        .await?;
 
     Ok(serde_json::json!({
         "chapter_id": chapter.id,
@@ -330,26 +378,33 @@ fn build_chapter_context(chapters: &[ChapterSummary]) -> String {
 // Content Enhancement
 //=============================================================================
 
-async fn enhance_content(db: &Database, anthropic: &AnthropicClient, job: &ContentJob) -> Result<serde_json::Value> {
+async fn enhance_content(
+    db: &Database,
+    llm_client: &llm::Client,
+    config: &Config,
+    job: &ContentJob,
+) -> Result<serde_json::Value> {
     let input: EnhanceInput = serde_json::from_value(job.input.clone())?;
 
-    let prompt = prompts::build_enhancement_prompt(
+    let system_prompt = "You are an expert editor. Improve the given content while maintaining the author's voice.";
+    let user_prompt = prompts::build_enhancement_prompt(
         &input.content,
         &input.enhancement_type,
         input.instructions.as_deref(),
     );
+    
+    let full_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
 
-    let response = anthropic.create_message(
-        "claude-sonnet-4-20250514",
-        8000,
-        &prompt,
-        Some("You are an expert editor. Improve the given content while maintaining the author's voice.")
-    ).await?;
+    let result = llm_client.generate_with_options(&config.model, &full_prompt, Some(8000))
+        .await
+        .map_err(|e| anyhow::anyhow!("LLM generation failed: {}", e))?;
+    let response = result.text;
 
     // If chapter_id is provided, update the chapter
     if let Some(chapter_id) = input.chapter_id {
         let word_count = response.split_whitespace().count() as i32;
-        db.update_chapter_content(&chapter_id, &response, word_count).await?;
+        db.update_chapter_content(&chapter_id, &response, word_count)
+            .await?;
     }
 
     Ok(serde_json::json!({

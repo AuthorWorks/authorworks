@@ -57,13 +57,37 @@ impl Config {
                 .unwrap_or(default)
         };
 
+        let llm_provider = get_env_or_default("LLM_PROVIDER", "ollama");
+        
+        // Only require API keys for the selected provider
+        let openai_api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
+        let anthropic_api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
+        
+        // Validate that the required API key is present for the selected provider
+        match llm_provider.as_str() {
+            "openai" if openai_api_key.is_empty() => {
+                return Err(BookGeneratorError::MissingEnvVar("OPENAI_API_KEY".to_string()));
+            }
+            "anthropic" if anthropic_api_key.is_empty() => {
+                return Err(BookGeneratorError::MissingEnvVar("ANTHROPIC_API_KEY".to_string()));
+            }
+            // Ollama doesn't require an API key
+            _ => {}
+        }
+        
+        // Default model based on provider
+        let default_model = match llm_provider.as_str() {
+            "openai" => "gpt-4o",
+            "anthropic" => "claude-sonnet-4-20250514",
+            "ollama" => "deepseek-coder-v2:16b",
+            _ => "deepseek-coder-v2:16b",
+        };
+        
         Ok(Self {
-            llm_provider: get_env_or_default("LLM_PROVIDER", "anthropic"),
-            openai_api_key: std::env::var("OPENAI_API_KEY")
-                .map_err(|_| BookGeneratorError::MissingEnvVar("OPENAI_API_KEY".to_string()))?,
-            anthropic_api_key: std::env::var("ANTHROPIC_API_KEY")
-                .map_err(|_| BookGeneratorError::MissingEnvVar("ANTHROPIC_API_KEY".to_string()))?,
-            model: get_env_or_default("MODEL", "gpt-3.5-turbo"),
+            llm_provider,
+            openai_api_key,
+            anthropic_api_key,
+            model: get_env_or_default("MODEL", default_model),
             genre: get_env_or_default("GENRE", "Science Fiction"),
             writing_style: get_env_or_default("WRITING_STYLE", "Third-person limited, present tense"),
             target_audience: get_env_or_default("TARGET_AUDIENCE", "Young Adult"),

@@ -17,8 +17,28 @@ pub struct OllamaLLM {
 
 impl OllamaLLM {
     pub fn new(config: &Config) -> Result<Self> {
+        // Get Ollama host and port from environment, with sensible defaults
+        let host = std::env::var("OLLAMA_HOST")
+            .or_else(|_| std::env::var("OLLAMA_BASE_URL"))
+            .unwrap_or_else(|_| "http://localhost".to_string());
+        let port = std::env::var("OLLAMA_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(11434u16);
+        
+        // Parse host to extract just the hostname if it includes protocol
+        let host = host
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .split(':')
+            .next()
+            .unwrap_or("localhost")
+            .to_string();
+        
+        tracing::info!("Connecting to Ollama at {}:{} with model {}", host, port, config.model);
+        
         Ok(Self {
-            client: Ollama::default(),
+            client: Ollama::new(host, port),
             model: config.model.clone(),
         })
     }

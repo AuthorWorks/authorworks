@@ -26,12 +26,29 @@ spec:
             - name: OUTPUT_BASE
               value: "/data/books"
             - name: RUST_LOG
-              value: "book_generator_server=info,tower_http=info"
+              value: "book_generator=info,content_worker=info,tower_http=info"
+            # LLM Provider configuration (ollama, anthropic, or openai)
+            - name: LLM_PROVIDER
+              value: "ollama"
+            - name: OLLAMA_HOST
+              value: "192.168.1.200"
+            - name: OLLAMA_PORT
+              value: "11434"
+            - name: MODEL
+              value: "deepseek-coder-v2:16b"
+            # Optional API keys (only needed for respective providers)
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: authorworks-secrets
                   key: anthropic-api-key
+                  optional: true
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: openai-api-key
+                  optional: true
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

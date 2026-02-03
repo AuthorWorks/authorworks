@@ -17,7 +17,6 @@ const nextConfig = {
   },
   // API routes are now handled directly by Next.js API routes in /app/api
   // Removed rewrites to external gateway - books, chapters, generate all handled locally
-}
+};
 
-module.exports = nextConfig
-
+module.exports = nextConfig;
