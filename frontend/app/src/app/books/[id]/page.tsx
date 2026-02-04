@@ -7,8 +7,9 @@ import {
   Edit3,
   FileText,
   Loader2,
-  Plus, Settings,
-  Sparkles
+  Plus,
+  RotateCcw,
+  Settings
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -43,6 +44,7 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
   const { isAuthenticated, isLoading: authLoading, accessToken } = useAuth()
   const [showNewChapter, setShowNewChapter] = useState(false)
   const [newChapterTitle, setNewChapterTitle] = useState('')
+  const [generationError, setGenerationError] = useState<string | null>(null)
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -96,6 +98,68 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
       setShowNewChapter(false)
       setNewChapterTitle('')
       router.push(`/books/${params.id}/chapters/${data.id}`)
+    },
+  })
+
+  // Continue Writing - triggers book generation via core engine
+  const continueWritingMutation = useMutation({
+    mutationFn: async () => {
+      setGenerationError(null)
+      const response = await fetch('/api/generate/book', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          book_id: params.id,
+          title: book?.title,
+          description: book?.description || '',
+          genre: book?.genre || '',
+          braindump: book?.metadata?.braindump || '',
+          characters: book?.metadata?.characters || '',
+          synopsis: book?.metadata?.synopsis || '',
+          chapter_count: 12,
+        }),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to start generation')
+      }
+      return response.json()
+    },
+    onSuccess: (data) => {
+      console.log('Generation started:', data)
+      // Refresh chapters after a delay to see new content
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['chapters', params.id] })
+        queryClient.invalidateQueries({ queryKey: ['book', params.id] })
+      }, 2000)
+    },
+    onError: (error: Error) => {
+      setGenerationError(error.message)
+    },
+  })
+
+  // Reset - delete all chapters
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const currentChapters = chaptersData?.chapters || []
+      // Delete all chapters sequentially
+      for (const chapter of currentChapters) {
+        const response = await fetch(`/api/chapters/${chapter.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        if (!response.ok) {
+          throw new Error('Failed to delete chapter')
+        }
+      }
+      return { deleted: currentChapters.length }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chapters', params.id] })
+      queryClient.invalidateQueries({ queryKey: ['book', params.id] })
     },
   })
 
@@ -253,20 +317,55 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
         )}
       </div>
 
+      {/* Generation Error */}
+      {generationError && (
+        <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg text-red-300">
+          {generationError}
+        </div>
+      )}
+
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-4">
-        <button className="card flex items-center gap-3 hover:bg-slate-800/70 transition-colors">
-          <Sparkles className="h-8 w-8 text-purple-400" />
+        <button
+          onClick={() => continueWritingMutation.mutate()}
+          disabled={continueWritingMutation.isPending}
+          className="card flex items-center gap-3 hover:bg-slate-800/70 transition-colors disabled:opacity-50"
+        >
+          {continueWritingMutation.isPending ? (
+            <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
+          ) : (
+            <Edit3 className="h-8 w-8 text-emerald-400" />
+          )}
           <div className="text-left">
-            <h3 className="font-medium">Generate Outline</h3>
-            <p className="text-sm text-slate-500">AI-powered story planning</p>
+            <h3 className="font-medium">
+              {continueWritingMutation.isPending ? 'Generating...' : 'Continue Writing'}
+            </h3>
+            <p className="text-sm text-slate-500">
+              {continueWritingMutation.isPending
+                ? 'AI is creating content'
+                : 'Generate content with AI'}
+            </p>
           </div>
         </button>
-        <button className="card flex items-center gap-3 hover:bg-slate-800/70 transition-colors">
-          <Edit3 className="h-8 w-8 text-emerald-400" />
+        <button
+          onClick={() => {
+            if (confirm('Are you sure you want to reset? This will delete all chapters.')) {
+              resetMutation.mutate()
+            }
+          }}
+          disabled={resetMutation.isPending || chapters.length === 0}
+          className="card flex items-center gap-3 hover:bg-slate-800/70 transition-colors disabled:opacity-50"
+        >
+          {resetMutation.isPending ? (
+            <Loader2 className="h-8 w-8 text-red-400 animate-spin" />
+          ) : (
+            <RotateCcw className="h-8 w-8 text-red-400" />
+          )}
           <div className="text-left">
-            <h3 className="font-medium">Continue Writing</h3>
-            <p className="text-sm text-slate-500">Pick up where you left off</p>
+            <h3 className="font-medium">
+              {resetMutation.isPending ? 'Resetting...' : 'Reset'}
+            </h3>
+            <p className="text-sm text-slate-500">Delete all chapters and start over</p>
           </div>
         </button>
       </div>
