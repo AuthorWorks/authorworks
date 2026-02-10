@@ -11,15 +11,12 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace files (Cargo.lock optional for CI when not committed)
-COPY Cargo.toml ./
-COPY core ./core
-COPY workers/content ./workers/content
+# Copy full workspace so all members exist (see .dockerignore to limit context)
+COPY . .
 RUN cargo generate-lockfile 2>/dev/null || true
 
-# Build the worker
-WORKDIR /app/workers/content
-RUN cargo build --release
+# Build only the content-worker package
+RUN cargo build --release -p content-worker
 
 # Runtime image
 FROM debian:bookworm-slim

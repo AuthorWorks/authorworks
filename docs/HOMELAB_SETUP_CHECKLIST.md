@@ -74,7 +74,20 @@ kubectl rollout status deployment/authorworks-frontend deployment/authorworks-bo
 
 ---
 
-## 6. Useful commands (on alef)
+## 6. Verify deployment (on alef after push)
+
+After pushing to `main`, GitHub Actions builds images and (if secrets set) restarts deployments. ArgoCD will sync new manifests (content-worker, monitoring). On the cluster:
+
+```bash
+ssh alef
+kubectl get pods -n authorworks
+kubectl get deployments -n authorworks
+kubectl rollout status deployment/authorworks-frontend deployment/authorworks-book-generator -n authorworks --timeout=60s
+```
+
+Expected: `authorworks-frontend`, `authorworks-book-generator` Running; `authorworks-content-worker` Running once the content-worker image has been built and ArgoCD/kustomize has synced. If content-worker is `ImagePullBackOff`, wait for the `Build Homelab Docker Images` workflow to finish (build-content-worker job).
+
+## 7. Useful commands (on alef)
 
 ```bash
 kubectl get pods -n authorworks
