@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Core book generator library with LLM support
-book_generator = { path = "../../core/book-generator" }
+book_generator = { path = "../../core/book-generator", package = "book-generator" }
 
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }

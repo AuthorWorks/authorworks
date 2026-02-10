@@ -13,6 +13,10 @@ spec:
     metadata:
       labels:
         app: authorworks-book-generator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
         - name: book-generator

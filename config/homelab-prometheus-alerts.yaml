@@ -31,22 +31,21 @@ groups:
         annotations:
           summary: "AuthorWorks content-worker has no available replicas"
 
-  # Option B: Use if you scrape authorworks pods (prometheus.io/scrape, port, path on pods with /metrics).
-  # Uncomment and set job/app labels to match your scrape config (e.g. kubernetes-pods with app label).
-  # - name: authorworks-pod-scrape
-  #   interval: 30s
-  #   rules:
-  #     - alert: AuthorWorksFrontendDown
-  #       expr: up{kubernetes_namespace="authorworks", app="authorworks-frontend"} == 0
-  #       for: 3m
-  #       labels:
-  #         severity: critical
-  #       annotations:
-  #         summary: "AuthorWorks frontend scrape target is down"
-  #     - alert: AuthorWorksBookGeneratorDown
-  #       expr: up{kubernetes_namespace="authorworks", app="authorworks-book-generator"} == 0
-  #       for: 3m
-  #       labels:
-  #         severity: critical
-  #       annotations:
-  #         summary: "AuthorWorks book-generator scrape target is down"
+  # Option B: Use with pod scrape (prometheus.io annotations on frontend and book-generator).
+  - name: authorworks-pod-scrape
+    interval: 30s
+    rules:
+      - alert: AuthorWorksFrontendDown
+        expr: up{kubernetes_namespace="authorworks", app="authorworks-frontend"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AuthorWorks frontend scrape target is down"
+      - alert: AuthorWorksBookGeneratorDown
+        expr: up{kubernetes_namespace="authorworks", app="authorworks-book-generator"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AuthorWorks book-generator scrape target is down"

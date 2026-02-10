@@ -10,11 +10,12 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
-    response::Json,
+    http::{header, StatusCode},
+    response::Response,
     routing::{get, post},
     Router,
 };
+use axum::body::Body;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
@@ -105,6 +106,7 @@ async fn main() {
     // Build router
     let app = Router::new()
         .route("/health", get(health_check))
+        .route("/metrics", get(metrics_prometheus))
         .route("/api/generate", post(start_generation))
         .route("/api/jobs/:job_id", get(get_job_status))
         .route("/api/jobs/:job_id/cancel", post(cancel_job))
@@ -129,6 +131,26 @@ async fn health_check() -> Json<HealthResponse> {
         status: "healthy".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     })
+}
+
+/// Prometheus exposition format for homelab monitoring.
+async fn metrics_prometheus() -> Response {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let body = format!(
+        "# HELP authorworks_book_generator_up Service is running (1 = up).\n\
+         # TYPE authorworks_book_generator_up gauge\n\
+         authorworks_book_generator_up 1 {}\n",
+        timestamp
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8; version=0.0.4")
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(body))
+        .unwrap()
 }
 
 async fn start_generation(
