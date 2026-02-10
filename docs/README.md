@@ -9,6 +9,8 @@ Welcome to the AuthorWorks platform documentation.
 | [Getting Started](./getting-started.md) | Quick start guide for developers |
 | [Architecture](./architecture.md) | System architecture and design |
 | [Deployment](./deployment.md) | Deployment guides for all environments |
+| [Homelab Setup Checklist](./HOMELAB_SETUP_CHECKLIST.md) | K3s migrations, apply, content worker, monitoring |
+| [Agent Logging & Analytics](./agent-logging-and-analytics.md) | Worker job recording, dashboard stats, monitoring |
 | [API Standards](./api-standards.md) | API design guidelines |
 | [Development](./development.md) | Development workflow and practices |
 

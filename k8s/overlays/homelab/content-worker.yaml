@@ -1,0 +1,57 @@
+# Content worker: polls content.generation_jobs, same DB as API.
+# Optional for current frontend (outline is inline; full book uses book-generator HTTP).
+# Required when using Spin content service that enqueues outline/chapter/enhance jobs.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authorworks-content-worker
+  namespace: authorworks
+  labels:
+    app: authorworks-content-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authorworks-content-worker
+  template:
+    metadata:
+      labels:
+        app: authorworks-content-worker
+    spec:
+      containers:
+        - name: content-worker
+          image: ghcr.io/authorworks/content-worker:homelab
+          imagePullPolicy: Always
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: database-url
+            - name: LLM_PROVIDER
+              value: "ollama"
+            - name: OLLAMA_HOST
+              value: "192.168.1.200"
+            - name: OLLAMA_PORT
+              value: "11434"
+            - name: MODEL
+              value: "deepseek-coder-v2:16b"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authorworks-secrets
+                  key: anthropic-api-key
+                  optional: true
+            - name: RUST_LOG
+              value: "content_worker=info,book_generator=info"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+---
+# No Service needed - worker is poll-based, no incoming HTTP.

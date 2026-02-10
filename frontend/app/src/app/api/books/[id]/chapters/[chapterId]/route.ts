@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Pool } from 'pg'
+import { getContentSchemaTables } from '@/app/lib/db-schema'
 
 function getPool() {
   return new Pool({
@@ -38,9 +39,9 @@ export async function GET(
 
   const pool = getPool()
   try {
-    // Verify user owns the book
+    const { booksTable, chaptersTable, bookOwnerCol } = await getContentSchemaTables(pool)
     const bookCheck = await pool.query(
-      'SELECT id FROM books WHERE id = $1 AND user_id = $2',
+      `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
       [params.id, userId]
     )
     if (bookCheck.rows.length === 0) {
@@ -48,7 +49,7 @@ export async function GET(
     }
 
     const result = await pool.query(
-      'SELECT * FROM chapters WHERE id = $1 AND book_id = $2',
+      `SELECT * FROM ${chaptersTable} WHERE id = $1 AND book_id = $2`,
       [params.chapterId, params.id]
     )
 
@@ -77,9 +78,9 @@ export async function PUT(
 
   const pool = getPool()
   try {
-    // Verify user owns the book
+    const { booksTable, chaptersTable, bookOwnerCol } = await getContentSchemaTables(pool)
     const bookCheck = await pool.query(
-      'SELECT id FROM books WHERE id = $1 AND user_id = $2',
+      `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
       [params.id, userId]
     )
     if (bookCheck.rows.length === 0) {
@@ -89,11 +90,10 @@ export async function PUT(
     const body = await request.json()
     const { title, content } = body
 
-    // Calculate word count
     const wordCount = content ? content.trim().split(/\s+/).filter(Boolean).length : 0
 
     const result = await pool.query(
-      `UPDATE chapters
+      `UPDATE ${chaptersTable}
        SET title = COALESCE($1, title),
            content = COALESCE($2, content),
            word_count = $3,
@@ -107,10 +107,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Chapter not found' }, { status: 404 })
     }
 
-    // Update book's total word count
     await pool.query(
-      `UPDATE books
-       SET word_count = (SELECT COALESCE(SUM(word_count), 0) FROM chapters WHERE book_id = $1),
+      `UPDATE ${booksTable}
+       SET word_count = (SELECT COALESCE(SUM(word_count), 0) FROM ${chaptersTable} WHERE book_id = $1),
            updated_at = NOW()
        WHERE id = $1`,
       [params.id]
@@ -137,9 +136,9 @@ export async function DELETE(
 
   const pool = getPool()
   try {
-    // Verify user owns the book
+    const { booksTable, chaptersTable, bookOwnerCol } = await getContentSchemaTables(pool)
     const bookCheck = await pool.query(
-      'SELECT id FROM books WHERE id = $1 AND user_id = $2',
+      `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
       [params.id, userId]
     )
     if (bookCheck.rows.length === 0) {
@@ -147,7 +146,7 @@ export async function DELETE(
     }
 
     const result = await pool.query(
-      'DELETE FROM chapters WHERE id = $1 AND book_id = $2 RETURNING id',
+      `DELETE FROM ${chaptersTable} WHERE id = $1 AND book_id = $2 RETURNING id`,
       [params.chapterId, params.id]
     )
 
@@ -155,21 +154,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'Chapter not found' }, { status: 404 })
     }
 
-    // Renumber remaining chapters
     await pool.query(
       `WITH numbered AS (
         SELECT id, ROW_NUMBER() OVER (ORDER BY chapter_number) as new_num
-        FROM chapters WHERE book_id = $1
+        FROM ${chaptersTable} WHERE book_id = $1
       )
-      UPDATE chapters c SET chapter_number = n.new_num
+      UPDATE ${chaptersTable} c SET chapter_number = n.new_num
       FROM numbered n WHERE c.id = n.id`,
       [params.id]
     )
 
-    // Update book's word count
     await pool.query(
-      `UPDATE books
-       SET word_count = (SELECT COALESCE(SUM(word_count), 0) FROM chapters WHERE book_id = $1),
+      `UPDATE ${booksTable}
+       SET word_count = (SELECT COALESCE(SUM(word_count), 0) FROM ${chaptersTable} WHERE book_id = $1),
            updated_at = NOW()
        WHERE id = $1`,
       [params.id]

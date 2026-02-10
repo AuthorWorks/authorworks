@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
+import { getContentSchemaTables } from '@/app/lib/db-schema';
 
-// Database connection
 function getPool() {
   return new Pool({
     connectionString:
@@ -53,21 +53,19 @@ export async function GET(request: NextRequest, { params }: { params: { jobId: s
 async function autoSyncBook(bookId: string, jobId: string, status: any) {
   const pool = getPool();
   try {
-    // Extract chapters from the generation result
+    const { booksTable, chaptersTable } = await getContentSchemaTables(pool);
     const chapters = status.chapters || status.outline?.chapters || [];
 
     if (chapters.length > 0) {
-      // Delete existing chapters first
-      await pool.query('DELETE FROM chapters WHERE book_id = $1', [bookId]);
+      await pool.query(`DELETE FROM ${chaptersTable} WHERE book_id = $1`, [bookId]);
 
-      // Insert new chapters
       for (let i = 0; i < chapters.length; i++) {
         const chapter = chapters[i];
         const content = chapter.content || chapter.summary || '';
         const title = chapter.title || `Chapter ${i + 1}`;
 
         await pool.query(
-          `INSERT INTO chapters (book_id, chapter_number, title, content, word_count, status)
+          `INSERT INTO ${chaptersTable} (book_id, chapter_number, title, content, word_count, status)
            VALUES ($1, $2, $3, $4, $5, 'draft')`,
           [bookId, i + 1, title, content, content.split(/\s+/).length]
         );
@@ -75,7 +73,6 @@ async function autoSyncBook(bookId: string, jobId: string, status: any) {
       console.log(`Synced ${chapters.length} chapters for book ${bookId}`);
     }
 
-    // Update book metadata
     const metadata: Record<string, any> = {
       generation_completed: true,
       generation_job_id: jobId,
@@ -85,7 +82,7 @@ async function autoSyncBook(bookId: string, jobId: string, status: any) {
     if (status.themes) metadata.themes = status.themes;
 
     await pool.query(
-      `UPDATE books SET
+      `UPDATE ${booksTable} SET
          metadata = COALESCE(metadata, '{}'::jsonb) || $1,
          status = 'draft',
          updated_at = NOW()
@@ -93,10 +90,9 @@ async function autoSyncBook(bookId: string, jobId: string, status: any) {
       [JSON.stringify(metadata), bookId]
     );
 
-    // Update word count
     await pool.query(
-      `UPDATE books
-       SET word_count = (SELECT COALESCE(SUM(word_count), 0) FROM chapters WHERE book_id = $1)
+      `UPDATE ${booksTable}
+       SET word_count = (SELECT COALESCE(SUM(word_count), 0) FROM ${chaptersTable} WHERE book_id = $1)
        WHERE id = $1`,
       [bookId]
     );

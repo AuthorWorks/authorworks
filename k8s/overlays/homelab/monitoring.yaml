@@ -1,0 +1,29 @@
+# Minimal monitoring for homelab: Prometheus alert rules (Prometheus Operator).
+# Requires Prometheus Operator. Adjust expr job names to match your scrape config.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: authorworks-homelab
+  namespace: authorworks
+  labels:
+    app: authorworks
+spec:
+  groups:
+  - name: authorworks_homelab
+    interval: 30s
+    rules:
+    - alert: AuthorWorksBookGeneratorDown
+      expr: up{namespace="authorworks", job=~".*book-generator.*"} == 0
+      for: 3m
+      labels:
+        severity: critical
+      annotations:
+        summary: "AuthorWorks book-generator is down"
+    - alert: AuthorWorksFrontendDown
+      expr: up{namespace="authorworks", job=~".*frontend.*"} == 0
+      for: 3m
+      labels:
+        severity: critical
+      annotations:
+        summary: "AuthorWorks frontend is down"

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Pool } from 'pg'
+import { getContentSchemaTables } from '@/app/lib/db-schema'
 
 function getPool() {
   return new Pool({
@@ -38,9 +39,9 @@ export async function GET(
 
   const pool = getPool()
   try {
-    // First verify user owns the book
+    const { booksTable, chaptersTable, bookOwnerCol } = await getContentSchemaTables(pool)
     const bookCheck = await pool.query(
-      'SELECT id FROM books WHERE id = $1 AND user_id = $2',
+      `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
       [params.id, userId]
     )
 
@@ -49,7 +50,7 @@ export async function GET(
     }
 
     const result = await pool.query(
-      'SELECT * FROM chapters WHERE book_id = $1 ORDER BY chapter_number ASC',
+      `SELECT * FROM ${chaptersTable} WHERE book_id = $1 ORDER BY chapter_number ASC`,
       [params.id]
     )
 
@@ -74,9 +75,9 @@ export async function POST(
 
   const pool = getPool()
   try {
-    // Verify user owns the book
+    const { booksTable, chaptersTable, bookOwnerCol } = await getContentSchemaTables(pool)
     const bookCheck = await pool.query(
-      'SELECT id FROM books WHERE id = $1 AND user_id = $2',
+      `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
       [params.id, userId]
     )
 
@@ -87,15 +88,14 @@ export async function POST(
     const body = await request.json()
     const { title, content } = body
 
-    // Get next chapter number
     const maxResult = await pool.query(
-      'SELECT COALESCE(MAX(chapter_number), 0) + 1 as next_num FROM chapters WHERE book_id = $1',
+      `SELECT COALESCE(MAX(chapter_number), 0) + 1 as next_num FROM ${chaptersTable} WHERE book_id = $1`,
       [params.id]
     )
     const nextChapterNumber = maxResult.rows[0].next_num
 
     const result = await pool.query(
-      `INSERT INTO chapters (book_id, chapter_number, title, content, word_count)
+      `INSERT INTO ${chaptersTable} (book_id, chapter_number, title, content, word_count)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
       [params.id, nextChapterNumber, title || null, content || '', content ? content.split(/\s+/).length : 0]

@@ -41,7 +41,7 @@ async function getUserId(request: NextRequest): Promise<string | null> {
   }
 }
 
-// GET /api/books - List all books for the user
+// GET /api/books - List all books for the user (content.books author_id or books user_id)
 export async function GET(request: NextRequest) {
   const userId = await getUserId(request)
   if (!userId) {
@@ -54,18 +54,35 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const status = searchParams.get('status')
 
-    let query = 'SELECT * FROM books WHERE user_id = $1'
-    const params: any[] = [userId]
+    const hasContentSchema = await pool
+      .query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema = 'content' AND table_name = 'books' LIMIT 1`
+      )
+      .then((r: { rows: unknown[] }) => r.rows.length > 0)
 
-    if (status) {
-      query += ' AND status = $2'
-      params.push(status)
+    let result
+    if (hasContentSchema) {
+      let query =
+        'SELECT id, author_id AS user_id, title, description, genre, status, word_count, metadata, created_at, updated_at FROM content.books WHERE author_id = $1::uuid'
+      const params: any[] = [userId]
+      if (status) {
+        query += ' AND status = $2'
+        params.push(status)
+      }
+      query += ' ORDER BY updated_at DESC LIMIT $' + (params.length + 1)
+      params.push(limit)
+      result = await pool.query(query, params)
+    } else {
+      let query = 'SELECT * FROM books WHERE user_id = $1'
+      const params: any[] = [userId]
+      if (status) {
+        query += ' AND status = $2'
+        params.push(status)
+      }
+      query += ' ORDER BY updated_at DESC LIMIT $' + (params.length + 1)
+      params.push(limit)
+      result = await pool.query(query, params)
     }
-
-    query += ' ORDER BY updated_at DESC LIMIT $' + (params.length + 1)
-    params.push(limit)
-
-    const result = await pool.query(query, params)
 
     return NextResponse.json({ books: result.rows })
   } catch (error) {
@@ -99,13 +116,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 })
     }
 
-    console.log('POST /api/books - Inserting into database')
-    const result = await pool.query(
-      `INSERT INTO books (user_id, title, description, genre, metadata)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [userId, title.trim(), description || null, genre || null, metadata ? JSON.stringify(metadata) : '{}']
-    )
+    const hasContentSchema = await pool
+      .query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema = 'content' AND table_name = 'books' LIMIT 1`
+      )
+      .then((r: { rows: unknown[] }) => r.rows.length > 0)
+
+    const result = hasContentSchema
+      ? await pool.query(
+          `INSERT INTO content.books (id, author_id, title, description, genre, status, metadata, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4, 'draft', $5, NOW(), NOW())
+           RETURNING id, author_id AS user_id, title, description, genre, status, metadata, created_at, updated_at`,
+          [userId, title.trim(), description || null, genre || null, metadata ? JSON.stringify(metadata) : '{}']
+        )
+      : await pool.query(
+          `INSERT INTO books (user_id, title, description, genre, metadata)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING *`,
+          [userId, title.trim(), description || null, genre || null, metadata ? JSON.stringify(metadata) : '{}']
+        )
 
     console.log('POST /api/books - Success, book id:', result.rows[0]?.id)
     return NextResponse.json(result.rows[0], { status: 201 })

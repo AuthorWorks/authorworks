@@ -37,19 +37,20 @@ fi
 echo "🚀 Applying kustomization..."
 kubectl apply -k "${PROJECT_ROOT}/k8s/overlays/homelab"
 
-# Wait for deployments
+# Wait for deployments (base-minimal: frontend + book-generator; homelab overlay: server + content-worker)
 echo "⏳ Waiting for deployments..."
-kubectl rollout status deployment/authorworks-server -n authorworks --timeout=300s || true
-kubectl rollout status deployment/logto -n authorworks --timeout=300s || true
+for d in authorworks-frontend authorworks-book-generator authorworks-server authorworks-content-worker; do
+  kubectl rollout status deployment/"$d" -n authorworks --timeout=120s 2>/dev/null || true
+done
 
 echo ""
 echo "✅ Deployment complete!"
 echo ""
 kubectl get pods -n authorworks
 echo ""
-kubectl get ingress -n authorworks
+kubectl get ingress -n authorworks 2>/dev/null || true
 echo ""
-echo "🌐 Access at:"
-echo "  - https://author.works"
-echo "  - https://api.author.works"  
-echo "  - https://auth.author.works"
+echo "🌐 Access (see ingress):"
+echo "  - App: https://author.works (or your configured host)"
+echo "  - API: https://api.author.works"
+echo "  - Auth: https://auth.author.works (or auth.leopaska.xyz)"

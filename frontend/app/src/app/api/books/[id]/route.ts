@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Pool } from 'pg'
+import { getContentSchemaTables } from '@/app/lib/db-schema'
 
 function getPool() {
   return new Pool({
@@ -38,8 +39,9 @@ export async function GET(
 
   const pool = getPool()
   try {
+    const { booksTable, bookOwnerCol } = await getContentSchemaTables(pool)
     const result = await pool.query(
-      'SELECT * FROM books WHERE id = $1 AND user_id = $2',
+      `SELECT * FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
       [params.id, userId]
     )
 
@@ -103,9 +105,10 @@ export async function PUT(
 
     values.push(params.id, userId)
 
+    const { booksTable, bookOwnerCol } = await getContentSchemaTables(pool)
     const result = await pool.query(
-      `UPDATE books SET ${updates.join(', ')}
-       WHERE id = $${paramIndex++} AND user_id = $${paramIndex}
+      `UPDATE ${booksTable} SET ${updates.join(', ')}
+       WHERE id = $${paramIndex++} AND ${bookOwnerCol} = $${paramIndex}
        RETURNING *`,
       values
     )
@@ -135,8 +138,9 @@ export async function DELETE(
 
   const pool = getPool()
   try {
+    const { booksTable, bookOwnerCol } = await getContentSchemaTables(pool)
     const result = await pool.query(
-      'DELETE FROM books WHERE id = $1 AND user_id = $2 RETURNING id',
+      `DELETE FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2 RETURNING id`,
       [params.id, userId]
     )
 

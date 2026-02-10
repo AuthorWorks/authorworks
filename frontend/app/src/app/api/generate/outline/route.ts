@@ -55,11 +55,21 @@ export async function POST(request: NextRequest) {
     const body: OutlineRequest = await request.json();
     const { book_id, prompt, genre, style, chapter_count = 12 } = body;
 
-    // Verify user owns the book
-    const bookCheck = await pool.query(
-      'SELECT id, title, description, metadata FROM books WHERE id = $1 AND user_id = $2',
-      [book_id, userId]
-    );
+    const hasContentSchema = await pool
+      .query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema = 'content' AND table_name = 'books' LIMIT 1`
+      )
+      .then((r: { rows: unknown[] }) => r.rows.length > 0);
+
+    const bookCheck = hasContentSchema
+      ? await pool.query(
+          'SELECT id, title, description, metadata FROM content.books WHERE id = $1::uuid AND author_id = $2::uuid',
+          [book_id, userId]
+        )
+      : await pool.query(
+          'SELECT id, title, description, metadata FROM books WHERE id = $1 AND user_id = $2',
+          [book_id, userId]
+        );
     if (bookCheck.rows.length === 0) {
       return NextResponse.json({ error: 'Book not found' }, { status: 404 });
     }
@@ -230,19 +240,21 @@ Generate a compelling, well-paced outline with ${chapter_count} chapters. Each c
         .filter(Boolean)
         .join('\n');
 
+      const chaptersTable = hasContentSchema ? 'content.chapters' : 'chapters';
       await pool.query(
-        `INSERT INTO chapters (book_id, chapter_number, title, content, word_count)
-         VALUES ($1, $2, $3, $4, $5)`,
+        `INSERT INTO ${chaptersTable} (book_id, chapter_number, title, content, word_count)
+         VALUES ($1::uuid, $2, $3, $4, $5)`,
         [book_id, i + 1, chapter.title, content, content.split(/\s+/).length]
       );
     }
 
-    // Update book metadata with synopsis and themes
+    const booksTable = hasContentSchema ? 'content.books' : 'books';
+    const chaptersTable = hasContentSchema ? 'content.chapters' : 'chapters';
     await pool.query(
-      `UPDATE books SET
-        metadata = metadata || $1,
+      `UPDATE ${booksTable} SET
+        metadata = COALESCE(metadata, '{}'::jsonb) || $1,
         updated_at = NOW()
-       WHERE id = $2`,
+       WHERE id = $2::uuid`,
       [
         JSON.stringify({
           outline_generated: true,
@@ -252,12 +264,10 @@ Generate a compelling, well-paced outline with ${chapter_count} chapters. Each c
         book_id,
       ]
     );
-
-    // Update book word count
     await pool.query(
-      `UPDATE books
-       SET word_count = (SELECT COALESCE(SUM(word_count), 0) FROM chapters WHERE book_id = $1)
-       WHERE id = $1`,
+      `UPDATE ${booksTable}
+       SET word_count = (SELECT COALESCE(SUM(word_count), 0) FROM ${chaptersTable} WHERE book_id = $1::uuid)
+       WHERE id = $1::uuid`,
       [book_id]
     );
 

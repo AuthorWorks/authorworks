@@ -11,10 +11,11 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace files
-COPY Cargo.toml Cargo.lock ./
+# Copy workspace files (Cargo.lock optional for CI when not committed)
+COPY Cargo.toml ./
 COPY core ./core
 COPY workers/content ./workers/content
+RUN cargo generate-lockfile 2>/dev/null || true
 
 # Build the worker
 WORKDIR /app/workers/content
