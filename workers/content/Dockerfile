@@ -15,8 +15,8 @@ RUN apt-get update && apt-get install -y \
 COPY . .
 RUN cargo generate-lockfile 2>/dev/null || true
 
-# Build only the content-worker package
-RUN cargo build --release -p content-worker
+# Build only the content-worker package (override repo default wasm32-wasi for native Linux binary)
+RUN cargo build --release -p content-worker --target x86_64-unknown-linux-gnu
 
 # Runtime image
 FROM debian:bookworm-slim
@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/content-worker /app/content-worker
+COPY --from=builder /app/target/x86_64-unknown-linux-gnu/release/content-worker /app/content-worker
 
 # Health check endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
