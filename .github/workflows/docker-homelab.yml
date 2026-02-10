@@ -179,7 +179,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy-homelab:
-    needs: [build-frontend, build-book-generator]
+    needs: [build-frontend, build-book-generator, build-content-worker]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
