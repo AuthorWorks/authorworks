@@ -1,7 +1,8 @@
 # AuthorWorks Content Worker
 # Handles async AI content generation tasks from RabbitMQ
 
-FROM rust:1.83-slim-bookworm as builder
+# getrandom 0.4+ requires Rust 1.85 (edition 2024)
+FROM rust:1.85.0-slim-bookworm as builder
 
 WORKDIR /app
 
