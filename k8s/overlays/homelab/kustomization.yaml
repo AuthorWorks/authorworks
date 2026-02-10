@@ -9,7 +9,6 @@ resources:
 - sealed-secrets.yaml
 - ghcr-sealed-secret.yaml
 - content-worker.yaml
-- monitoring.yaml
 
 labels:
 - pairs:

@@ -43,7 +43,7 @@ kubectl apply -k k8s/overlays/homelab
 kubectl rollout status deployment/authorworks-frontend deployment/authorworks-book-generator deployment/authorworks-content-worker -n authorworks --timeout=300s
 ```
 
-**Deployments:** `authorworks-frontend`, `authorworks-book-generator`, `authorworks-server` (simple-deployment), `authorworks-content-worker`, plus SealedSecrets. Monitoring adds a `PrometheusRule` for alerts.
+**Deployments:** `authorworks-frontend`, `authorworks-book-generator`, `authorworks-server` (simple-deployment), `authorworks-content-worker`, plus SealedSecrets.
 
 ---
 
@@ -55,10 +55,12 @@ kubectl rollout status deployment/authorworks-frontend deployment/authorworks-bo
 
 ---
 
-## 4. Monitoring
+## 4. Monitoring (Prometheus, Loki, Uptime Kuma, Grafana)
 
-- **PrometheusRule** in `k8s/overlays/homelab/monitoring.yaml`: alerts for book-generator and frontend down. Requires Prometheus Operator and scrape config for `authorworks` namespace.
-- **Grafana:** Point to the same Prometheus; use `k8s/base/monitoring.yaml` for full Spin dashboards when applicable.
+- **Full guide:** [HOMELAB_MONITORING.md](HOMELAB_MONITORING.md) – Prometheus scrape/alert options, Loki (Vector already collects authorworks logs), Uptime Kuma monitors, Grafana/Refana.
+- **Prometheus:** Cluster uses plain Prometheus (no Operator). Optional alerts: use [homelab-prometheus-alerts.yaml](homelab-prometheus-alerts.yaml) with kube-state-metrics or pod scrape.
+- **Uptime Kuma:** Add a monitor for `https://author.works` (and API if used).
+- **Loki:** No change; logs from `authorworks` namespace are already shipped by Vector.
 
 ---
 
