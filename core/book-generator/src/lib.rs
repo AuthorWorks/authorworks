@@ -19,6 +19,7 @@ use crate::book::tabula::TemporarySummary;
 use serde::{Serialize, Deserialize};
 use crate::error::{Result, BookGeneratorError};
 use crate::utils::time_utils::format_duration;
+use langchain_rust::language_models::llm::LLM;
 
 pub use config::Config;
 pub use book::Book;
@@ -136,14 +137,17 @@ pub async fn generate_book_with_dir(
         }
     }
     
-    // Check API availability before starting - use the lightweight check
-    println!("🔍 Checking Anthropic API availability before starting...");
-    if !crate::utils::api_verification::wait_for_api_availability(Some(std::time::Duration::from_secs(60))).await {
-        return Err(BookGeneratorError::Generation("Anthropic API is unavailable after waiting. Please try again later.".into()));
+    // Check API availability before starting (only for Anthropic which has rate limits)
+    if config.llm_provider == "anthropic" {
+        println!("🔍 Checking Anthropic API availability before starting...");
+        if !crate::utils::api_verification::wait_for_api_availability(Some(std::time::Duration::from_secs(60))).await {
+            return Err(BookGeneratorError::Generation("Anthropic API is unavailable after waiting. Please try again later.".into()));
+        }
+        // Start API status monitoring in the background - this now uses the global monitor
+        crate::utils::api_verification::start_api_status_monitor(Duration::from_secs(30));
+    } else {
+        println!("🔍 Using LLM provider: {} (skipping Anthropic API check)", config.llm_provider);
     }
-    
-    // Start API status monitoring in the background - this now uses the global monitor
-    crate::utils::api_verification::start_api_status_monitor(Duration::from_secs(30));
     
     // Check if we're resuming from an existing book with metadata
     let resuming = output_dir.join("metadata.md").exists();
@@ -815,9 +819,11 @@ async fn generate_new_scene(
     output_dir: &Path,
     _token_tracker: &crate::utils::logging::TokenTracker,
 ) -> crate::error::Result<Scene> {
-    // Check API availability before generating a new scene
-    if !utils::api_verification::wait_for_api_availability(Some(Duration::from_secs(60))).await {
-        println!("Warning: API still appears overloaded, but will attempt to continue with reduced request rate");
+    // Check API availability before generating a new scene (only for Anthropic)
+    if _config.llm_provider == "anthropic" {
+        if !utils::api_verification::wait_for_api_availability(Some(Duration::from_secs(60))).await {
+            println!("Warning: API still appears overloaded, but will attempt to continue with reduced request rate");
+        }
     }
     
     // Generate the scene
@@ -943,12 +949,15 @@ pub async fn generate_remaining_content(
         prompt += "The content should be engaging, follow the specified writing style, and maintain continuity with previous scenes. ";
         prompt += "Focus on showing rather than telling, include meaningful dialogue, and ensure character actions align with their established personalities.";
         
-        // Generate the content using the correct function
-        let content_text = crate::llm::generate(
-            &config.model,
-            &prompt,
-            token_tracker
-        ).await?;
+        // Generate the content using the provider-aware LLM
+        let llm = crate::llm::create_llm(config)?;
+        let messages = vec![
+            langchain_rust::schemas::Message::new_human_message(&prompt),
+        ];
+        let result = llm.generate(&messages)
+            .await
+            .map_err(|e| BookGeneratorError::LLMError(e.to_string()))?;
+        let content_text = result.generation;
         
         // Log the content generation with estimated token counts
         let prompt_tokens = prompt.len() / 4; // Rough estimate

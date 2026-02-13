@@ -264,8 +264,19 @@ async fn run_generation(state: Arc<AppState>, job_id: String, request: GenerateR
         tracing::error!("Failed to write metadata: {}", e);
     }
 
-    // Create config with appropriate settings
-    let mut config = Config::default();
+    // Create config from environment variables (reads LLM_PROVIDER, OLLAMA_HOST, etc.)
+    let mut config = match Config::from_env() {
+        Ok(c) => c,
+        Err(e) => {
+            let mut jobs = state.jobs.write().await;
+            if let Some(job) = jobs.get_mut(&job_id) {
+                job.status = "failed".to_string();
+                job.error = Some(format!("Configuration error: {}", e));
+                job.updated_at = chrono::Utc::now().to_rfc3339();
+            }
+            return;
+        }
+    };
     config.auto_generate = true;
     if let Some(count) = request.chapter_count {
         config.max_chapters = count;

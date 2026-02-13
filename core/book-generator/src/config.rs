@@ -109,10 +109,10 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            llm_provider: "anthropic".to_string(),
+            llm_provider: "ollama".to_string(),
             openai_api_key: String::new(),
             anthropic_api_key: String::new(),
-            model: "claude-3-7-sonnet-20250219".to_string(),
+            model: "deepseek-coder-v2:16b".to_string(),
             genre: "Science Fiction".to_string(),
             writing_style: "Third-person limited, present tense".to_string(),
             target_audience: "Young Adult".to_string(),
