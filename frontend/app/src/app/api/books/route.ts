@@ -4,7 +4,7 @@ import { Pool } from 'pg'
 // Database connection pool - read inside handler to avoid build-time caching
 function getPool() {
   return new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgresql://postgres:homelab_postgres_2024@postgres.databases.svc.cluster.local:5432/authorworks',
+    connectionString: process.env.DATABASE_URL,
   })
 }
 

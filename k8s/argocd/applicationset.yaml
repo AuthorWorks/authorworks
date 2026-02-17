@@ -10,13 +10,13 @@ spec:
         elements:
           - env: homelab
             cluster: https://kubernetes.default.svc
-            repoURL: https://github.com/AuthorWorks/authorworks.git
+            repoURL: https://github.com/authorworks/authorworks.git
             targetRevision: main
             syncWave: "1"
           # Uncomment for production
           # - env: production
           #   cluster: https://kubernetes.default.svc
-          #   repoURL: https://github.com/leopaska/authorworks.git
+          #   repoURL: https://github.com/authorworks/authorworks.git
           #   targetRevision: main
           #   syncWave: "1"
 

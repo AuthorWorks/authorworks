@@ -14,7 +14,7 @@ This guide will help you get AuthorWorks running locally for development.
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/AuthorWorks/authorworks.git
+git clone https://github.com/authorworks/authorworks.git
 cd authorworks
 ```
 

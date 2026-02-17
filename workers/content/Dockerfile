@@ -1,8 +1,8 @@
 # AuthorWorks Content Worker
 # Handles async AI content generation tasks from RabbitMQ
 
-# getrandom 0.4+ requires Rust 1.85 (edition 2024)
-FROM rust:1.85.0-slim-bookworm as builder
+# Keep on current stable Rust to satisfy newer dependency MSRV (e.g. home crate)
+FROM rust:1-slim-bookworm as builder
 
 WORKDIR /app
 

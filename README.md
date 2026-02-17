@@ -8,7 +8,7 @@ AI-powered creative content platform - Monorepo with core engine + 8 microservic
 
 ```bash
 # Clone
-git clone https://github.com/AuthorWorks/authorworks.git
+git clone https://github.com/authorworks/authorworks.git
 cd authorworks
 
 # Configure

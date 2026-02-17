@@ -12,7 +12,7 @@ spec:
   project: authorworks
   
   source:
-    repoURL: https://github.com/leopaska/authorworks.git
+    repoURL: https://github.com/authorworks/authorworks.git
     targetRevision: main
     path: k8s/base
     kustomize:

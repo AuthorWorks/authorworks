@@ -4,9 +4,7 @@ import { getContentSchemaTables } from '@/app/lib/db-schema';
 
 function getPool() {
   return new Pool({
-    connectionString:
-      process.env.DATABASE_URL ||
-      'postgresql://postgres:homelab_postgres_2024@postgres.databases.svc.cluster.local:5432/authorworks',
+    connectionString: process.env.DATABASE_URL,
   });
 }
 

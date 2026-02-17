@@ -179,7 +179,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy-homelab:
-    needs: [build-frontend, build-book-generator, build-content-worker]
+    needs: [build-server, build-frontend, build-book-generator, build-content-worker]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
@@ -194,7 +194,7 @@ jobs:
             echo "$SSH_KEY" > ~/.ssh/id_rsa
             chmod 600 ~/.ssh/id_rsa
             ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts 2>/dev/null
-            ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "kubectl -n authorworks rollout restart deployment/authorworks-frontend deployment/authorworks-book-generator deployment/authorworks-content-worker 2>/dev/null || echo 'Deployment not found, will be created by ArgoCD'"
+            ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "kubectl -n authorworks rollout restart deployment/authorworks-server deployment/authorworks-frontend deployment/authorworks-book-generator deployment/authorworks-content-worker 2>/dev/null || echo 'Deployment not found, will be created by ArgoCD'"
           else
             echo "SSH credentials not configured, skipping deployment trigger"
           fi

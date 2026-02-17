@@ -7,7 +7,7 @@ This guide covers deploying AuthorWorks to all supported environments.
 | Environment | Description | Infrastructure |
 |-------------|-------------|----------------|
 | **Local** | Development on your machine | Docker Compose |
-| **Homelab** | K3s cluster at home | Docker Compose + Traefik |
+| **Homelab** | K3s cluster at home | K3s + Traefik + ArgoCD |
 | **EC2** | AWS EC2 MVP production | Docker Compose + Nginx |
 | **EKS** | AWS EKS scalable production | Kubernetes + Terraform |
 
@@ -73,12 +73,12 @@ All deployments use the unified script:
 ### Prerequisites
 - K3s cluster running
 - Traefik ingress controller
-- External network `llm_network`
-- Existing services: PostgreSQL, Redis, MinIO
+- ArgoCD installed with repo access
+- Existing services: PostgreSQL, Redis, MinIO, Logto
 
 ### Environment Variables
 ```bash
-export DOMAIN=leopaska.xyz
+export DOMAIN=author.works
 export POSTGRES_PASSWORD=your-password
 export REDIS_PASSWORD=your-password
 export JWT_SECRET=$(openssl rand -base64 32)
@@ -86,17 +86,22 @@ export LOGTO_CLIENT_ID=authorworks-app
 export LOGTO_CLIENT_SECRET=from-logto-console
 ```
 
-### Deploy
+### Deploy (GitOps)
 ```bash
-./scripts/deploy.sh homelab --build
+# Bootstrap/refresh ArgoCD apps
+./scripts/bootstrap-argocd.sh
+
+# Or apply homelab overlay directly (manual mode)
+./scripts/apply-homelab.sh
 ```
 
 ### Services
 | Service | URL |
 |---------|-----|
-| Application | https://authorworks.leopaska.xyz |
-| Logto Auth | https://auth.authorworks.leopaska.xyz |
-| Logto Admin | https://auth-admin.authorworks.leopaska.xyz |
+| Application | https://author.works |
+| API | https://api.author.works |
+| Logto Auth | https://auth.author.works |
+| Logto Admin | https://auth-admin.author.works |
 
 ### SSH Access
 ```bash
@@ -129,7 +134,7 @@ sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-
 sudo chmod +x /usr/local/bin/docker-compose
 
 # Clone repository
-git clone https://github.com/AuthorWorks/authorworks.git
+git clone https://github.com/authorworks/authorworks.git
 cd authorworks
 ```
 

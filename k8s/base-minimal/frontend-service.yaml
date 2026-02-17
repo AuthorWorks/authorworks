@@ -76,7 +76,10 @@ spec:
               key: logto-app-secret
         # Database connection for books API
         - name: DATABASE_URL
-          value: "postgresql://postgres:homelab_postgres_2024@postgres.databases.svc.cluster.local:5432/authorworks"
+          valueFrom:
+            secretKeyRef:
+              name: authorworks-secrets
+              key: database-url
         # AI Provider configuration (ollama, anthropic, or openai)
         - name: AI_PROVIDER
           value: "ollama"

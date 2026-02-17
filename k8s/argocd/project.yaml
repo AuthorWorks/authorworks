@@ -9,6 +9,8 @@ spec:
   description: AuthorWorks AI Content Creation Platform
   
   sourceRepos:
+    - 'https://github.com/AuthorWorks/*'
+    - 'git@github.com:AuthorWorks/*'
     - 'https://github.com/authorworks/*'
     - 'git@github.com:authorworks/*'
   

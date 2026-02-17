@@ -15,7 +15,7 @@ labels:
     environment: homelab
 
 images:
-- name: ghcr.io/authorworks/authorworks-platform
+- name: ghcr.io/authorworks/authorworks
   newTag: homelab
 - name: ghcr.io/authorworks/frontend
   newTag: homelab
