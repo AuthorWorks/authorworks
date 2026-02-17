@@ -26,14 +26,13 @@ impl OllamaLLM {
             .and_then(|p| p.parse().ok())
             .unwrap_or(11434u16);
         
-        // Parse host to extract just the hostname if it includes protocol
-        let host = host
-            .trim_start_matches("http://")
-            .trim_start_matches("https://")
-            .split(':')
-            .next()
-            .unwrap_or("localhost")
-            .to_string();
+        // ollama-rs expects a base host (with scheme) + port.
+        // Accept legacy values like "192.168.1.200" and normalize to "http://192.168.1.200".
+        let host = if host.starts_with("http://") || host.starts_with("https://") {
+            host
+        } else {
+            format!("http://{}", host)
+        };
         
         tracing::info!("Connecting to Ollama at {}:{} with model {}", host, port, config.model);
         
