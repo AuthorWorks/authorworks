@@ -16,6 +16,8 @@ jobs:
     permissions:
       contents: read
       issues: write
+    env:
+      SYNTHETIC_BEARER_TOKEN: ${{ secrets.SYNTHETIC_BEARER_TOKEN }}
 
     steps:
       - name: Checkout repository
@@ -28,18 +30,17 @@ jobs:
 
       - name: Run synthetic checks
         id: synthetic
-        if: ${{ secrets.SYNTHETIC_BEARER_TOKEN != '' }}
+        if: ${{ env.SYNTHETIC_BEARER_TOKEN != '' }}
         env:
           SYNTHETIC_BASE_URL: ${{ vars.SYNTHETIC_BASE_URL || 'https://author.works' }}
-          SYNTHETIC_BEARER_TOKEN: ${{ secrets.SYNTHETIC_BEARER_TOKEN }}
         run: node scripts/synthetic-monitor.mjs
 
       - name: Skip when synthetic token is missing
-        if: ${{ secrets.SYNTHETIC_BEARER_TOKEN == '' }}
+        if: ${{ env.SYNTHETIC_BEARER_TOKEN == '' }}
         run: echo "Skipping synthetic monitor (SYNTHETIC_BEARER_TOKEN not configured)."
 
       - name: Create or update incident issue on failure
-        if: failure() && secrets.SYNTHETIC_BEARER_TOKEN != ''
+        if: failure() && env.SYNTHETIC_BEARER_TOKEN != ''
         uses: actions/github-script@v7
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
