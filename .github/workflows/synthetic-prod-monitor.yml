@@ -1,0 +1,82 @@
+name: Synthetic Production Monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: synthetic-prod-monitor
+  cancel-in-progress: false
+
+jobs:
+  synthetic-monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run synthetic checks
+        id: synthetic
+        if: ${{ secrets.SYNTHETIC_BEARER_TOKEN != '' }}
+        env:
+          SYNTHETIC_BASE_URL: ${{ vars.SYNTHETIC_BASE_URL || 'https://author.works' }}
+          SYNTHETIC_BEARER_TOKEN: ${{ secrets.SYNTHETIC_BEARER_TOKEN }}
+        run: node scripts/synthetic-monitor.mjs
+
+      - name: Skip when synthetic token is missing
+        if: ${{ secrets.SYNTHETIC_BEARER_TOKEN == '' }}
+        run: echo "Skipping synthetic monitor (SYNTHETIC_BEARER_TOKEN not configured)."
+
+      - name: Create or update incident issue on failure
+        if: failure() && secrets.SYNTHETIC_BEARER_TOKEN != ''
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const title = "Synthetic monitor failing for production";
+            const body = [
+              "Automated synthetic monitoring detected a production regression.",
+              "",
+              `- Workflow run: ${process.env.RUN_URL}`,
+              `- Trigger: ${context.eventName}`,
+              `- Commit: ${context.sha}`,
+              "",
+              "Please triage immediately."
+            ].join("\n");
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100
+            });
+
+            const existing = issues.find((issue) => issue.title === title);
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body
+              });
+            }

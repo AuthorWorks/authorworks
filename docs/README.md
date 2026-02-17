@@ -11,6 +11,7 @@ Welcome to the AuthorWorks platform documentation.
 | [Deployment](./deployment.md) | Deployment guides for all environments |
 | [Homelab Setup Checklist](./HOMELAB_SETUP_CHECKLIST.md) | K3s migrations, apply, content worker, monitoring |
 | [Homelab Monitoring](./HOMELAB_MONITORING.md) | Prometheus, Loki, Uptime Kuma, Grafana integration |
+| [Production Verification](./production-verification.md) | CI end-to-end checks and synthetic monitoring setup |
 | [Agent Logging & Analytics](./agent-logging-and-analytics.md) | Worker job recording, dashboard stats, monitoring |
 | [API Standards](./api-standards.md) | API design guidelines |
 | [Development](./development.md) | Development workflow and practices |

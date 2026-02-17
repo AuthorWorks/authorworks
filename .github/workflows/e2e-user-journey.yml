@@ -1,0 +1,54 @@
+name: E2E User Journey
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/app/**"
+      - ".github/workflows/e2e-user-journey.yml"
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-user-journey-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  e2e-user-journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "frontend/app/package-lock.json"
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend/app ci
+
+      - name: Install Playwright browser dependencies
+        run: npx --prefix frontend/app playwright install --with-deps chromium
+
+      - name: Run end-to-end user journey
+        if: ${{ secrets.E2E_LOGTO_EMAIL != '' && secrets.E2E_LOGTO_PASSWORD != '' }}
+        env:
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL || 'https://author.works' }}
+          E2E_LOGTO_EMAIL: ${{ secrets.E2E_LOGTO_EMAIL }}
+          E2E_LOGTO_PASSWORD: ${{ secrets.E2E_LOGTO_PASSWORD }}
+          E2E_RUN_FULL_BOOK: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
+          E2E_POLL_TIMEOUT_MS: "600000"
+          E2E_POLL_INTERVAL_MS: "10000"
+        run: npm --prefix frontend/app run e2e:journey
+
+      - name: Skip when E2E auth secrets are missing
+        if: ${{ !(secrets.E2E_LOGTO_EMAIL != '' && secrets.E2E_LOGTO_PASSWORD != '') }}
+        run: echo "Skipping E2E user journey (E2E_LOGTO_EMAIL/E2E_LOGTO_PASSWORD not configured)."
