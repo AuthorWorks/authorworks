@@ -1,8 +1,7 @@
 name: Synthetic Production Monitor
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
+  # Temporarily disabled per ops decision; keep manual trigger available.
   workflow_dispatch:
 
 concurrency:

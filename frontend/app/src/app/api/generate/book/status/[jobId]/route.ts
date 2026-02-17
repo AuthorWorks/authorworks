@@ -17,6 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: { jobId: s
 
   console.log('GET /api/generate/book/status - jobId:', jobId);
 
+  const pool = getPool();
   try {
     const response = await fetch(`${BOOK_GENERATOR_URL}/api/jobs/${jobId}`, {
       headers: {
@@ -26,8 +27,10 @@ export async function GET(request: NextRequest, { params }: { params: { jobId: s
 
     if (!response.ok) {
       if (response.status === 404) {
+        await markGenerationLogFailedByJobId(pool, jobId, 'Job not found in book generator');
         return NextResponse.json({ error: 'Job not found' }, { status: 404 });
       }
+      await markGenerationLogFailedByJobId(pool, jobId, 'Failed to get job status from book generator');
       return NextResponse.json({ error: 'Failed to get job status' }, { status: 500 });
     }
 
@@ -39,11 +42,21 @@ export async function GET(request: NextRequest, { params }: { params: { jobId: s
       await autoSyncBook(status.book_id, jobId, status);
       status.synced = true;
     }
+    if (status.status === 'failed') {
+      await markGenerationLogFailedByJobId(
+        pool,
+        jobId,
+        status.error || 'Book generation failed'
+      );
+    }
 
     return NextResponse.json(status);
   } catch (error) {
     console.error('GET /api/generate/book/status - Error:', error);
+    await markGenerationLogFailedByJobId(pool, jobId, 'Internal status polling error');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } finally {
+    await pool.end();
   }
 }
 
@@ -109,5 +122,18 @@ async function autoSyncBook(bookId: string, jobId: string, status: any) {
     // Don't throw - we still want to return the status
   } finally {
     await pool.end();
+  }
+}
+
+async function markGenerationLogFailedByJobId(pool: Pool, jobId: string, errorMessage: string) {
+  try {
+    await pool.query(
+      `UPDATE generation_logs
+       SET status = 'failed', error = $1, completed_at = NOW()
+       WHERE result->>'job_id' = $2 AND status = 'pending'`,
+      [errorMessage, jobId]
+    );
+  } catch (error) {
+    console.error(`Failed to update generation_logs for job ${jobId}:`, error);
   }
 }
