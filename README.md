@@ -188,3 +188,63 @@ Docs:
 ## License
 
 MIT License — see [LICENSE](LICENSE).
+
+
+<!-- homelab-deployment:begin -->
+## Homelab Deployment
+
+This service is deployed to production on the [`l3ocifer/homelab`](https://github.com/l3ocifer/homelab) K3s cluster via ArgoCD GitOps. **AuthorWorks is self-managed** — the entry in the shared [`production-apps`](https://github.com/l3ocifer/homelab/blob/main/argocd/apps/production-apps.yaml) ApplicationSet was removed on 2026-04-28 because it could only track one image annotation; this repo now carries its own `k8s/argocd/applicationset.yaml` with per-image annotations for `frontend`, `book-generator`, and `content-worker`.
+
+### Cluster footprint
+
+| Field | Value |
+|---|---|
+| **ArgoCD Application** | `authorworks-homelab` (created by the in-repo `applicationset.yaml`) |
+| **AppSet entry** | [`k8s/argocd/applicationset.yaml`](k8s/argocd/applicationset.yaml) (this repo) |
+| **Namespace** | `authorworks` |
+| **Public URL** | https://authorworks.leopaska.xyz |
+| **Manifest path (this repo)** | `k8s/overlays/homelab/` |
+| **Tracked branch** | `main` |
+| **Container images** | `ghcr.io/authorworks/frontend:latest`, `ghcr.io/authorworks/book-generator:latest`, `ghcr.io/authorworks/content-worker:latest` |
+| **Image auto-update** | ArgoCD Image Updater (newest-build strategy) |
+
+### Required platform resources (provided by homelab)
+
+| Resource | Endpoint / Reference |
+|---|---|
+| **Postgres** | `homelab-pg-rw.databases.svc.cluster.local:5432` (CloudNativePG; DB created via `postInitSQL` in [`argocd/apps/_postgres/homelab-pg.yaml`](https://github.com/l3ocifer/homelab/blob/main/argocd/apps/_postgres/homelab-pg.yaml)) |
+| **Logto SSO** | `https://logto.leopaska.xyz` |
+| **Inference (LiteLLM)** | `http://litellm.inference.svc.cluster.local:4000` (anthropic / openai / vLLM routing) |
+| **TLS / DNS** | Cloudflare Tunnel + Traefik IngressRoute, cert via cert-manager (Let's Encrypt DNS-01) |
+
+### SealedSecrets (committed to homelab repo)
+
+| Secret | Type | Keys | Vaultwarden item |
+|---|---|---|---|
+| `authorworks/authorworks-secrets` | Opaque | `DATABASE_URL`, `LOGTO_APP_ID`, `LOGTO_APP_SECRET`, `ANTHROPIC_API_KEY`, etc. | `authorworks-bundle` |
+| `authorworks/ghcr-pull-secret` | dockerconfigjson | `.dockerconfigjson` | `ghcr-leopaska-pat` |
+
+### Re-seal procedure
+
+If a secret reports `no key could decrypt secret (...)` after a cluster rebuild:
+
+1. Plaintext source of truth: self-hosted Vaultwarden at https://warden.leopaska.xyz
+2. Follow the step-by-step re-seal flow: [`docs/argocd-triage.md#re-seal-procedure-per-secret`](https://github.com/l3ocifer/homelab/blob/main/docs/argocd-triage.md#re-seal-procedure-per-secret)
+3. For the GHCR pull secret use the bulk loop in [`docs/argocd-triage.md#ghcr-pull-secrets-special-case--dockerconfigjson`](https://github.com/l3ocifer/homelab/blob/main/docs/argocd-triage.md#ghcr-pull-secrets-special-case--dockerconfigjson)
+
+### Image build & deploy flow
+
+1. Push to `main` triggers GitHub Actions builds (one workflow per image)
+2. Images pushed to GHCR
+3. ArgoCD Image Updater detects new digests within ~2m
+4. ArgoCD applies updated manifests; rolling restart per Deployment
+
+### Operational references
+
+- **Live status**: https://argocd.leopaska.xyz/applications/authorworks-homelab
+- **Logs**: https://grafana.leopaska.xyz → Explore → Loki → `{namespace="authorworks"}`
+- **Production apps catalog**: [`docs/production-apps.md`](https://github.com/l3ocifer/homelab/blob/main/docs/production-apps.md)
+- **Disaster recovery runbook**: [`docs/disaster-recovery.md`](https://github.com/l3ocifer/homelab/blob/main/docs/disaster-recovery.md)
+- **Secrets workflow**: [`docs/secrets-checklist.md`](https://github.com/l3ocifer/homelab/blob/main/docs/secrets-checklist.md)
+- **Health triage**: [`docs/argocd-triage.md`](https://github.com/l3ocifer/homelab/blob/main/docs/argocd-triage.md)
+<!-- homelab-deployment:end -->
