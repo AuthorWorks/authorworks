@@ -4,4 +4,3 @@ metadata:
   name: authorworks
   labels:
     app: authorworks
-    spin.dev/app: "true"

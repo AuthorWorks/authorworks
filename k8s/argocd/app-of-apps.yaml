@@ -1,5 +1,9 @@
-# Root Application - App of Apps pattern
-# Deploy this first to bootstrap the entire stack
+# Root Application - App of Apps pattern.
+#
+# Apply this manually (kubectl apply -f k8s/argocd/app-of-apps.yaml).
+# It points at k8s/argocd (kustomization.yaml -> applicationset.yaml) which
+# generates the per-environment Applications. Excluded from the kustomization
+# itself so it doesn't try to reconcile its own definition.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -8,10 +12,10 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: homelab
 
   source:
-    repoURL: https://github.com/authorworks/authorworks.git
+    repoURL: https://github.com/AuthorWorks/authorworks.git
     targetRevision: main
     path: k8s/argocd
 

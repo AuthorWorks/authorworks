@@ -42,8 +42,8 @@ spec:
         - name: ghcr-pull-secret
       containers:
       - name: frontend
-        image: ghcr.io/authorworks/frontend:homelab
-        imagePullPolicy: Always
+        image: ghcr.io/authorworks/frontend
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
         env:

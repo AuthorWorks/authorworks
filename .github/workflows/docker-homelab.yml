@@ -1,4 +1,12 @@
-name: Build Homelab Docker Images
+name: Build and Push Images
+
+# Builds the three GHCR images consumed by the homelab cluster (frontend,
+# book-generator, content-worker). Each image is tagged `sha-<commit>` so
+# ArgoCD Image Updater can detect new builds and bump the kustomize image
+# overrides on the live Application via the ArgoCD API. `latest` is also
+# pushed for human reference.
+#
+# No SSH-based rollout step: ArgoCD + Image Updater own redeploys.
 
 on:
   push:
@@ -7,82 +15,29 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-server:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata (server)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=homelab
-
-      - name: Build and push server image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.server
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   build-frontend:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata (frontend)
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/authorworks/frontend
           tags: |
-            type=sha
+            type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=homelab
-
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: ./frontend/app
           file: ./frontend/app/Dockerfile
@@ -101,33 +56,22 @@ jobs:
     permissions:
       contents: read
       packages: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata (book-generator)
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/authorworks/book-generator
           tags: |
-            type=sha
+            type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=homelab
-
-      - name: Build and push book-generator image
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: ./core/book-generator
           file: ./core/book-generator/Dockerfile
@@ -142,33 +86,22 @@ jobs:
     permissions:
       contents: read
       packages: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata (content-worker)
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/authorworks/content-worker
           tags: |
-            type=sha
+            type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=homelab
-
-      - name: Build and push content-worker image
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: .
           file: ./workers/content/Dockerfile
@@ -177,24 +110,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  deploy-homelab:
-    needs: [build-server, build-frontend, build-book-generator, build-content-worker]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Trigger homelab deployment
-        env:
-          SSH_KEY: ${{ secrets.HOMELAB_SSH_KEY }}
-          SSH_HOST: ${{ secrets.HOMELAB_HOST }}
-          SSH_USER: ${{ secrets.HOMELAB_USER }}
-        run: |
-          if [ -n "$SSH_KEY" ] && [ -n "$SSH_HOST" ]; then
-            mkdir -p ~/.ssh
-            echo "$SSH_KEY" > ~/.ssh/id_rsa
-            chmod 600 ~/.ssh/id_rsa
-            ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts 2>/dev/null
-            ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "kubectl -n authorworks rollout restart deployment/authorworks-server deployment/authorworks-frontend deployment/authorworks-book-generator deployment/authorworks-content-worker 2>/dev/null || echo 'Deployment not found, will be created by ArgoCD'"
-          else
-            echo "SSH credentials not configured, skipping deployment trigger"
-          fi

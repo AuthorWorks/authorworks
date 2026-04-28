@@ -20,8 +20,8 @@ spec:
     spec:
       containers:
         - name: book-generator
-          image: ghcr.io/authorworks/book-generator:homelab
-          imagePullPolicy: Always
+          image: ghcr.io/authorworks/book-generator
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081
           env:

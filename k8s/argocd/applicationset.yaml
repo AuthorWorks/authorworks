@@ -5,18 +5,17 @@ metadata:
   namespace: argocd
 spec:
   generators:
-    # Environment-based generator
     - list:
         elements:
           - env: homelab
             cluster: https://kubernetes.default.svc
-            repoURL: https://github.com/authorworks/authorworks.git
+            repoURL: https://github.com/AuthorWorks/authorworks.git
             targetRevision: main
             syncWave: "1"
-          # Uncomment for production
+          # Uncomment when production overlay is rebuilt:
           # - env: production
           #   cluster: https://kubernetes.default.svc
-          #   repoURL: https://github.com/authorworks/authorworks.git
+          #   repoURL: https://github.com/AuthorWorks/authorworks.git
           #   targetRevision: main
           #   syncWave: "1"
 
@@ -24,14 +23,36 @@ spec:
     metadata:
       name: 'authorworks-{{env}}'
       namespace: argocd
-      annotations:
-        argocd.argoproj.io/sync-wave: '{{syncWave}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
       labels:
         app.kubernetes.io/name: authorworks
         app.kubernetes.io/instance: '{{env}}'
         environment: '{{env}}'
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{syncWave}}'
+        # ArgoCD Image Updater configuration. Tracks all three GHCR images,
+        # selecting the newest immutable sha-<commit> tag pushed by CI and
+        # writing the bump back via the ArgoCD API (Application.spec.source.kustomize.images).
+        argocd-image-updater.argoproj.io/image-list: >-
+          frontend=ghcr.io/authorworks/frontend,
+          book-generator=ghcr.io/authorworks/book-generator,
+          content-worker=ghcr.io/authorworks/content-worker
+        argocd-image-updater.argoproj.io/frontend.update-strategy: newest-build
+        argocd-image-updater.argoproj.io/frontend.allow-tags: 'regexp:^sha-[0-9a-f]{7}$'
+        argocd-image-updater.argoproj.io/frontend.kustomize.image-name: ghcr.io/authorworks/frontend
+        argocd-image-updater.argoproj.io/book-generator.update-strategy: newest-build
+        argocd-image-updater.argoproj.io/book-generator.allow-tags: 'regexp:^sha-[0-9a-f]{7}$'
+        argocd-image-updater.argoproj.io/book-generator.kustomize.image-name: ghcr.io/authorworks/book-generator
+        argocd-image-updater.argoproj.io/content-worker.update-strategy: newest-build
+        argocd-image-updater.argoproj.io/content-worker.allow-tags: 'regexp:^sha-[0-9a-f]{7}$'
+        argocd-image-updater.argoproj.io/content-worker.kustomize.image-name: ghcr.io/authorworks/content-worker
+        argocd-image-updater.argoproj.io/write-back-method: argocd
+        # GHCR is private; image-updater needs a pull secret to read the registry API.
+        # See docs/CLUSTER_PREREQS.md for the dockerconfigjson secret in argocd ns.
+        argocd-image-updater.argoproj.io/pull-secret: pullsecret:argocd/ghcr-credentials
     spec:
-      project: authorworks
+      project: homelab
 
       source:
         repoURL: '{{repoURL}}'
@@ -51,6 +72,7 @@ spec:
           - CreateNamespace=true
           - PrunePropagationPolicy=foreground
           - PruneLast=true
+          - RespectIgnoreDifferences=true
         retry:
           limit: 5
           backoff:
@@ -59,10 +81,12 @@ spec:
             maxDuration: 3m
 
       ignoreDifferences:
+        # Replicas are HPA-driven (or manually scaled) and shouldn't be reconciled.
         - group: apps
           kind: Deployment
           jsonPointers:
             - /spec/replicas
+        # SealedSecrets controller writes the decrypted Secret; ignore that drift.
         - group: ""
           kind: Secret
           jsonPointers:

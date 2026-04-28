@@ -11,53 +11,11 @@ spec:
   tls:
     - hosts:
         - author.works
-        - api.author.works
       secretName: authorworks-tls
   rules:
     - host: author.works
       http:
         paths:
-          # Auth API routes go to frontend (Next.js API routes)
-          - path: /api/auth
-            pathType: Prefix
-            backend:
-              service:
-                name: authorworks-frontend
-                port:
-                  number: 3000
-          # Books API routes go to frontend (Next.js API routes)
-          - path: /api/books
-            pathType: Prefix
-            backend:
-              service:
-                name: authorworks-frontend
-                port:
-                  number: 3000
-          # Generate API routes go to frontend (Next.js API routes)
-          - path: /api/generate
-            pathType: Prefix
-            backend:
-              service:
-                name: authorworks-frontend
-                port:
-                  number: 3000
-          # Dashboard API routes go to frontend (Next.js API routes)
-          - path: /api/dashboard
-            pathType: Prefix
-            backend:
-              service:
-                name: authorworks-frontend
-                port:
-                  number: 3000
-          # Other API routes go to backend (legacy)
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: authorworks-server
-                port:
-                  number: 80
-          # Frontend routes go to Next.js
           - path: /
             pathType: Prefix
             backend:
@@ -65,13 +23,3 @@ spec:
                 name: authorworks-frontend
                 port:
                   number: 3000
-    - host: api.author.works
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: authorworks-server
-                port:
-                  number: 80

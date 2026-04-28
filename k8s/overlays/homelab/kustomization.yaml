@@ -4,22 +4,25 @@ kind: Kustomization
 namespace: authorworks
 
 resources:
-- ../../base-minimal
-- simple-deployment.yaml
-- sealed-secrets.yaml
-- ghcr-sealed-secret.yaml
-- content-worker.yaml
+  - ../../base-minimal
+  - sealed-secrets.yaml
+  - ghcr-sealed-secret.yaml
+  - content-worker.yaml
 
 labels:
-- pairs:
-    environment: homelab
+  - pairs:
+      environment: homelab
 
+# Image tags are managed by ArgoCD Image Updater (write-back-method: argocd).
+# The newTag fields below are bootstrap values pinned to the HEAD commit at the
+# time this overlay was last refreshed. Image Updater patches
+# `spec.source.kustomize.images` on the live Application whenever a newer
+# `sha-<commit>` tag appears in GHCR, so the values here drift only as the
+# repo bootstrap baseline.
 images:
-- name: ghcr.io/authorworks/authorworks
-  newTag: homelab
-- name: ghcr.io/authorworks/frontend
-  newTag: homelab
-
-replicas:
-- name: authorworks-server
-  count: 1
+  - name: ghcr.io/authorworks/frontend
+    newTag: sha-e4de8b6
+  - name: ghcr.io/authorworks/book-generator
+    newTag: sha-e4de8b6
+  - name: ghcr.io/authorworks/content-worker
+    newTag: sha-e4de8b6

@@ -1,9 +1,16 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# This kustomization is what the bootstrap `authorworks-apps` Application
+# (defined in app-of-apps.yaml) watches. It deliberately excludes
+# app-of-apps.yaml to avoid self-reconciliation: bootstrap that one
+# manually, then ArgoCD owns the ApplicationSet from here.
+#
+# Bootstrap flow:
+#   1. (cluster prereq) ghcr-credentials in argocd ns + image-updater env
+#      -- see docs/CLUSTER_PREREQS.md
+#   2. kubectl apply -f k8s/argocd/app-of-apps.yaml
+#   3. ArgoCD reconciles k8s/argocd via the ApplicationSet below.
+
 resources:
-  - project.yaml
   - applicationset.yaml
-  # Optional: Individual component apps for granular control
-  # - components/logto.yaml
-  # - components/workers.yaml

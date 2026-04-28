@@ -68,48 +68,94 @@ All deployments use the unified script:
 
 ---
 
-## Homelab (K3s)
+## Homelab (k3s) — GitOps via ArgoCD + Image Updater
 
-### Prerequisites
-- K3s cluster running
-- Traefik ingress controller
-- ArgoCD installed with repo access
-- Existing services: PostgreSQL, Redis, MinIO, Logto
+The homelab deploy is fully GitOps. CI builds three images and tags them
+`sha-<commit>`. ArgoCD Image Updater watches GHCR for new SHA tags, patches
+`Application/authorworks-homelab.spec.source.kustomize.images`, and ArgoCD
+rolls the deployments. There is **no SSH-based deploy step**.
 
-### Environment Variables
-```bash
-export DOMAIN=author.works
-export POSTGRES_PASSWORD=your-password
-export REDIS_PASSWORD=your-password
-export JWT_SECRET=$(openssl rand -base64 32)
-export LOGTO_CLIENT_ID=authorworks-app
-export LOGTO_CLIENT_SECRET=from-logto-console
+### Layout
+
+```
+k8s/
+  argocd/
+    app-of-apps.yaml        # bootstrap Application (apply once)
+    applicationset.yaml     # generates authorworks-{env} with image-updater annotations
+    kustomization.yaml      # references applicationset.yaml only (avoids self-recursion)
+  base-minimal/             # Deployments, Services, Ingress, ConfigMap
+  overlays/
+    homelab/
+      kustomization.yaml    # images: pinned to sha-<commit> (Image Updater bumps this on the live Application)
+      content-worker.yaml
+      sealed-secrets.yaml          # authorworks-secrets (re-seal before deploy)
+      ghcr-sealed-secret.yaml      # ghcr-pull-secret    (re-seal before deploy)
 ```
 
-### Deploy (GitOps)
+### Cluster prerequisites
+
+Cluster-wide bits this repo cannot manage. As of 2026-04-28 every item
+below is **DONE** on the homelab cluster (`l3ocifer/homelab` repo)
+**except #3** (`ghcr-credentials` Secret), which is per-cluster bootstrap.
+Full handoff in [`CLUSTER_PREREQS.md`](./CLUSTER_PREREQS.md); the
+checklist's [Section 0](./HOMELAB_SETUP_CHECKLIST.md#0-cluster-prerequisites)
+embeds them inline.
+
+1. **ArgoCD core** — `argocd-server`, `argocd-applicationset-controller`,
+   `argocd-image-updater`, `argocd-repo-server` running in the `argocd`
+   ns. `homelab` AppProject exists with permissive
+   sourceRepos/destinations. ✅
+2. **Image Updater configured for K8s API mode** — the
+   `argocd-image-updater` Deployment runs `v0.14.0` with
+   `applications_api: kubernetes`. The updater talks to the Kubernetes
+   API for both reads and writes, so no gRPC connection to
+   `argocd-server` is opened (which sidesteps the v0.14.0 TLS bug
+   entirely). ✅
+3. **GHCR credentials for image-updater** — dockerconfigjson Secret
+   `ghcr-credentials` in the `argocd` ns (PAT with `read:packages`).
+   Annotation `pullsecret:argocd/ghcr-credentials` references it.
+   **REQUIRED.**
+4. **sealed-secrets-controller** running in `kube-system`. ✅
+5. **cert-manager** with `letsencrypt-prod` ClusterIssuer + Traefik
+   ingress controller. ✅
+6. **External services** reachable in-cluster — PostgreSQL
+   (`postgres.databases.svc.cluster.local:5432` for both `authorworks`
+   and `logto` DBs), Redis, Logto (`logto.security.svc.cluster.local:3001`
+   server-side / `https://auth.leopaska.xyz` browser-side). ✅
+7. **One-time ownership fix** — the `authorworks` element has been
+   commented out of the external `production-apps` ApplicationSet
+   (`l3ocifer/homelab` commit `775e469`), so this repo's ApplicationSet
+   is the sole owner of `authorworks-homelab`. ✅
+
+### Deploy
+
 ```bash
-# Bootstrap/refresh ArgoCD apps
+# 1. Re-seal SealedSecrets against this cluster's controller key
+./scripts/seal-secrets.sh    # plaintext via env vars or interactive prompts
+git add k8s/overlays/homelab/{sealed-secrets,ghcr-sealed-secret}.yaml
+git commit -m "chore: seal authorworks secrets for homelab cluster"
+git push
+
+# 2. Bootstrap ArgoCD (idempotent; safe to re-run)
 ./scripts/bootstrap-argocd.sh
-
-# Or apply homelab overlay directly (manual mode)
-./scripts/apply-homelab.sh
 ```
+
+After bootstrap, `Application/authorworks-homelab` should reach `Synced +
+Healthy`. From there, every push to `main` is picked up automatically — CI
+publishes new images, image-updater bumps the tag, ArgoCD redeploys.
 
 ### Services
+
 | Service | URL |
 |---------|-----|
 | Application | https://author.works |
-| API | https://api.author.works |
-| Logto Auth | https://auth.author.works |
-| Logto Admin | https://auth-admin.author.works |
+| Logto Auth | https://auth.leopaska.xyz |
 
 ### SSH Access
-```bash
-# Direct (local network)
-ssh alef  # 192.168.1.200:2222
 
-# Via Cloudflare (anywhere)
-ssh homelab  # ssh.leopaska.xyz
+```bash
+ssh alef       # 192.168.1.200:2222 (local network)
+ssh homelab    # ssh.leopaska.xyz (via Cloudflare)
 ```
 
 ---

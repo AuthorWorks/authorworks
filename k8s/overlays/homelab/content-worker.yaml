@@ -20,8 +20,8 @@ spec:
     spec:
       containers:
         - name: content-worker
-          image: ghcr.io/authorworks/content-worker:homelab
-          imagePullPolicy: Always
+          image: ghcr.io/authorworks/content-worker
+          imagePullPolicy: IfNotPresent
           env:
             - name: DATABASE_URL
               valueFrom:
