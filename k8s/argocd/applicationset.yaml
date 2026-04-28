@@ -4,6 +4,15 @@ metadata:
   name: authorworks
   namespace: argocd
 spec:
+  # Without this, the ApplicationSet controller would clobber the
+  # spec.source.kustomize.images field on every reconcile, undoing the
+  # tag bumps written by argocd-image-updater. Tell it to leave that
+  # field (and the image-updater status annotation) alone.
+  ignoreApplicationDifferences:
+    - jsonPointers:
+        - /spec/source/kustomize/images
+        - /metadata/annotations/argocd-image-updater.argoproj.io~1image-list
+
   generators:
     - list:
         elements:
