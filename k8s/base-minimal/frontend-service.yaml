@@ -40,6 +40,11 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-pull-secret
+      # Image is published as linux/amd64 only; pin the workload to amd64
+      # nodes (homelab `hailo` is arm64). Switch to linux/amd64,linux/arm64
+      # in CI if cross-arch scheduling is desired.
+      nodeSelector:
+        kubernetes.io/arch: amd64
       containers:
       - name: frontend
         image: ghcr.io/authorworks/frontend

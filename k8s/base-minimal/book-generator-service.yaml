@@ -18,6 +18,11 @@ spec:
         prometheus.io/port: "8081"
         prometheus.io/path: "/metrics"
     spec:
+      # Image is published as linux/amd64 only; pin the workload to amd64
+      # nodes (homelab `hailo` is arm64). Switch to a multi-arch build in
+      # CI if cross-arch scheduling is desired.
+      nodeSelector:
+        kubernetes.io/arch: amd64
       containers:
         - name: book-generator
           image: ghcr.io/authorworks/book-generator

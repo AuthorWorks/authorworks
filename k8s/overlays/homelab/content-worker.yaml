@@ -18,6 +18,10 @@ spec:
       labels:
         app: authorworks-content-worker
     spec:
+      # Image is published as linux/amd64 only; pin the workload to amd64
+      # nodes (homelab `hailo` is arm64).
+      nodeSelector:
+        kubernetes.io/arch: amd64
       containers:
         - name: content-worker
           image: ghcr.io/authorworks/content-worker
