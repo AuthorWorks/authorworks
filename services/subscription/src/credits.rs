@@ -236,14 +236,66 @@ pub fn create_credit_checkout_session(
     conn.execute(insert_query, &insert_params)
         .map_err(|e| ServiceError::Internal(format!("Failed to create order: {}", e)))?;
 
-    // Call Stripe API to create checkout session
+    // Call Stripe Checkout to create a session.
+    // Requires `stripe_secret_key`, `stripe_success_url`, and `stripe_cancel_url` Spin variables.
     let stripe_secret_key = variables::get("stripe_secret_key")
         .map_err(|_| ServiceError::Internal("STRIPE_SECRET_KEY not configured".into()))?;
+    let success_url = variables::get("stripe_success_url")
+        .unwrap_or_else(|_| "https://author.works/billing/success".to_string());
+    let cancel_url = variables::get("stripe_cancel_url")
+        .unwrap_or_else(|_| "https://author.works/billing/cancel".to_string());
 
-    // Note: In a real implementation, you would call Stripe's API here
-    // For now, we'll return a mock response
-    let session_id = format!("cs_test_{}", order_id);
-    let checkout_url = format!("https://checkout.stripe.com/pay/{}", session_id);
+    let line_price_id = stripe_price_id.ok_or_else(|| {
+        ServiceError::Internal("Credit package missing stripe_price_id".into())
+    })?;
+
+    let form_body = serde_urlencoded::to_string([
+        ("mode", "payment"),
+        ("line_items[0][price]", line_price_id),
+        ("line_items[0][quantity]", "1"),
+        ("success_url", success_url.as_str()),
+        ("cancel_url", cancel_url.as_str()),
+        ("client_reference_id", order_id.to_string().as_str()),
+        ("metadata[order_id]", order_id.to_string().as_str()),
+        ("metadata[user_id]", user_id.to_string().as_str()),
+    ])
+    .map_err(|e| ServiceError::Internal(format!("Failed to encode Stripe request: {e}")))?;
+
+    let stripe_request = spin_sdk::http::Request::builder()
+        .method(spin_sdk::http::Method::Post)
+        .uri("https://api.stripe.com/v1/checkout/sessions")
+        .header("Authorization", format!("Bearer {stripe_secret_key}"))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(form_body.into_bytes())
+        .build();
+
+    let stripe_response: spin_sdk::http::Response =
+        spin_sdk::http::send(stripe_request)
+            .map_err(|e| ServiceError::Internal(format!("Stripe call failed: {e}")))?;
+
+    let status = *stripe_response.status();
+    let body = std::str::from_utf8(stripe_response.body())
+        .map_err(|e| ServiceError::Internal(format!("Stripe returned non-UTF8 body: {e}")))?
+        .to_string();
+
+    if !(200..300).contains(&status) {
+        return Err(ServiceError::Internal(format!(
+            "Stripe checkout failed (status {status}): {body}"
+        )));
+    }
+
+    let parsed: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| ServiceError::Internal(format!("Stripe returned invalid JSON: {e}")))?;
+    let session_id = parsed
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServiceError::Internal("Stripe response missing 'id'".into()))?
+        .to_string();
+    let checkout_url = parsed
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServiceError::Internal("Stripe response missing 'url'".into()))?
+        .to_string();
 
     // Update order with session ID
     let update_query = "UPDATE subscriptions.credit_orders

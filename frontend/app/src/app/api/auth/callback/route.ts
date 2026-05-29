@@ -1,114 +1,77 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getLogtoEndpoint } from '@/app/lib/auth'
 
+/**
+ * POST /api/auth/callback
+ *
+ * Server-side leg of the Logto PKCE flow:
+ *  1. Exchange the auth code + verifier for tokens at Logto.
+ *  2. Best-effort sync of the resulting user to a downstream user-service when configured.
+ *
+ * Returns the upstream Logto token response unchanged (access_token, refresh_token, ...).
+ */
 export async function POST(request: NextRequest) {
-  // Read env vars inside handler to avoid build-time caching
-  const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://localhost:3002'
-  const LOGTO_APP_ID = process.env.LOGTO_APP_ID || ''
-  const LOGTO_APP_SECRET = process.env.LOGTO_APP_SECRET || ''
+  let body: { code?: string; codeVerifier?: string; redirectUri?: string }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
 
-  console.log('Auth callback - LOGTO_ENDPOINT:', LOGTO_ENDPOINT)
+  const { code, codeVerifier, redirectUri } = body
+  if (!code || !codeVerifier || !redirectUri) {
+    return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
+  }
+
+  const clientId = process.env.LOGTO_CLIENT_ID || process.env.NEXT_PUBLIC_LOGTO_CLIENT_ID
+  if (!clientId) {
+    return NextResponse.json({ error: 'LOGTO_CLIENT_ID is not configured' }, { status: 500 })
+  }
 
   try {
-    const body = await request.json()
-    const { code, codeVerifier, redirectUri } = body
-
-    if (!code || !redirectUri) {
-      return NextResponse.json(
-        { error: 'Missing required parameters' },
-        { status: 400 }
-      )
-    }
-
-    // Exchange code for tokens with Logto
-    const tokenResponse = await fetch(`${LOGTO_ENDPOINT}/oidc/token`, {
+    const tokenResponse = await fetch(`${getLogtoEndpoint()}/oidc/token`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${Buffer.from(`${LOGTO_APP_ID}:${LOGTO_APP_SECRET}`).toString('base64')}`,
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
         redirect_uri: redirectUri,
-        code_verifier: codeVerifier || '',
-      }),
+        client_id: clientId,
+        code_verifier: codeVerifier,
+      }).toString(),
     })
 
     if (!tokenResponse.ok) {
-      const error = await tokenResponse.text()
-      console.error('Token exchange failed:', error)
+      const errorText = await tokenResponse.text()
       return NextResponse.json(
-        { error: 'Token exchange failed' },
-        { status: 401 }
+        { error: 'Token exchange failed', details: errorText },
+        { status: tokenResponse.status }
       )
     }
 
     const tokens = await tokenResponse.json()
-    const { access_token, id_token } = tokens
 
-    // Get user info from Logto
-    const userInfoResponse = await fetch(`${LOGTO_ENDPOINT}/oidc/me`, {
-      headers: {
-        Authorization: `Bearer ${access_token}`,
-      },
-    })
-
-    if (!userInfoResponse.ok) {
-      return NextResponse.json(
-        { error: 'Failed to get user info' },
-        { status: 401 }
-      )
-    }
-
-    const userInfo = await userInfoResponse.json()
-
-    // Sync user to our database via User Service (optional - don't fail if unavailable)
+    // Optional downstream user-sync. Failure here is non-blocking: the user is still
+    // authenticated and the JWT is the source of truth for the rest of the app.
     const userServiceUrl = process.env.USER_SERVICE_URL
-    if (!userServiceUrl) {
-      console.log('USER_SERVICE_URL not configured, skipping user sync')
-    }
-    let userId = userInfo.sub
-
-    if (userServiceUrl) {
+    if (userServiceUrl && tokens.access_token) {
       try {
-        const syncResponse = await fetch(`${userServiceUrl}/api/users/sync`, {
+        await fetch(`${userServiceUrl}/auth/sync`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${access_token}`,
+            Authorization: `Bearer ${tokens.access_token}`,
           },
-          body: JSON.stringify({
-            logto_id: userInfo.sub,
-            email: userInfo.email,
-            name: userInfo.name || userInfo.username,
-            avatar: userInfo.picture,
-          }),
+          body: JSON.stringify({ source: 'logto-callback' }),
         })
-        if (syncResponse.ok) {
-          const syncedUser = await syncResponse.json()
-          userId = syncedUser.id
-        }
-      } catch (syncError) {
-        console.warn('User sync failed (non-critical):', syncError)
+      } catch (error) {
+        console.warn('User sync skipped:', error)
       }
     }
 
-    // Return user info and token to client
-    return NextResponse.json({
-      accessToken: access_token,
-      user: {
-        id: userId,
-        name: userInfo.name || userInfo.username || 'User',
-        email: userInfo.email,
-        avatar: userInfo.picture,
-      },
-    })
+    return NextResponse.json(tokens)
   } catch (error) {
-    console.error('Auth callback error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('Logto callback failed:', error)
+    return NextResponse.json({ error: 'Authentication callback failed' }, { status: 500 })
   }
 }
-

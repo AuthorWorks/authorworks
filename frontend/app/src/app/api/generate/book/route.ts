@@ -1,123 +1,97 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Pool } from 'pg'
+import { getUserId, unauthorized } from '@/app/lib/auth'
+import { getPool } from '@/app/lib/db'
 
-// Database connection
-function getPool() {
-  return new Pool({
-    connectionString: process.env.DATABASE_URL,
-  })
-}
+const DEFAULT_BOOK_GENERATOR_URL =
+  'http://authorworks-book-generator.authorworks.svc.cluster.local:8081'
 
-// Helper to get user ID from auth token
-async function getUserId(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader?.startsWith('Bearer ')) return null
-
-  const token = authHeader.substring(7)
-  const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://logto.security.svc.cluster.local:3001'
-
-  try {
-    const response = await fetch(`${LOGTO_ENDPOINT}/oidc/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!response.ok) return null
-    const userInfo = await response.json()
-    return userInfo.sub
-  } catch {
-    return null
-  }
-}
-
-// POST /api/generate/book - Start full book generation using core engine
+// POST /api/generate/book - Kick off full book generation in the book-generator service.
 export async function POST(request: NextRequest) {
-  const BOOK_GENERATOR_URL = process.env.BOOK_GENERATOR_URL || 'http://authorworks-book-generator.authorworks.svc.cluster.local:8081'
-
-  console.log('POST /api/generate/book - starting')
-  console.log('BOOK_GENERATOR_URL:', BOOK_GENERATOR_URL)
-
   const userId = await getUserId(request)
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!userId) return unauthorized()
+
+  let body: {
+    book_id?: string
+    title?: string
+    description?: string
+    braindump?: string
+    genre?: string
+    style?: string
+    characters?: string
+    synopsis?: string
+    outline_prompt?: string
+    chapter_count?: number
+    author_name?: string
+  }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
+  if (!body.book_id || !body.title) {
+    return NextResponse.json({ error: 'book_id and title are required' }, { status: 400 })
+  }
+
+  const generatorUrl = process.env.BOOK_GENERATOR_URL || DEFAULT_BOOK_GENERATOR_URL
+  let generatorResponse: Response
   try {
-    const body = await request.json()
-    const {
-      book_id,
-      title,
-      description,
-      braindump,
-      genre,
-      style,
-      characters,
-      synopsis,
-      outline_prompt,
-      chapter_count,
-      author_name,
-    } = body
-
-    if (!book_id || !title) {
-      return NextResponse.json({ error: 'book_id and title are required' }, { status: 400 })
-    }
-
-    console.log('POST /api/generate/book - Calling book generator for book:', book_id)
-
-    // Call the book generator service
-    const generatorResponse = await fetch(`${BOOK_GENERATOR_URL}/api/generate`, {
+    generatorResponse = await fetch(`${generatorUrl}/api/generate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        book_id,
-        title,
-        description: description || '',
-        braindump: braindump || '',
-        genre: genre || '',
-        style: style || '',
-        characters: characters || '',
-        synopsis: synopsis || '',
-        outline_prompt: outline_prompt || '',
-        chapter_count: chapter_count || 12,
-        author_name: author_name || 'AuthorWorks User',
+        book_id: body.book_id,
+        title: body.title,
+        description: body.description ?? '',
+        braindump: body.braindump ?? '',
+        genre: body.genre ?? '',
+        style: body.style ?? '',
+        characters: body.characters ?? '',
+        synopsis: body.synopsis ?? '',
+        outline_prompt: body.outline_prompt ?? '',
+        chapter_count: body.chapter_count ?? 12,
+        author_name: body.author_name ?? 'AuthorWorks User',
       }),
     })
+  } catch (error) {
+    console.error('Book generator unreachable:', error)
+    return NextResponse.json(
+      { error: 'Book generator service is unreachable' },
+      { status: 503 }
+    )
+  }
 
-    if (!generatorResponse.ok) {
-      const errorText = await generatorResponse.text()
-      console.error('Book generator error:', errorText)
-      return NextResponse.json({ error: 'Failed to start book generation' }, { status: 500 })
-    }
+  if (!generatorResponse.ok) {
+    const errorText = await generatorResponse.text()
+    return NextResponse.json(
+      { error: 'Failed to start book generation', details: errorText },
+      { status: generatorResponse.status }
+    )
+  }
 
-    const result = await generatorResponse.json()
-    console.log('POST /api/generate/book - Job started:', result.job_id)
+  const result = await generatorResponse.json()
 
-    // Store the job ID in the database using existing schema
-    const pool = getPool()
-    try {
-      await pool.query(
-        `INSERT INTO generation_logs (book_id, generation_type, prompt, status, result)
-         VALUES ($1, 'full_book', $2, 'pending', $3)`,
-        [
-          book_id,
-          `Title: ${title}\nDescription: ${description || ''}\nGenre: ${genre || ''}\nStyle: ${style || ''}\nOutline Prompt: ${outline_prompt || ''}`,
-          JSON.stringify({ job_id: result.job_id, user_id: userId })
-        ]
-      )
-    } catch (dbError) {
-      console.error('Failed to log generation job:', dbError)
-      // Don't fail the request, generation still started
-    } finally {
-      await pool.end()
-    }
+  // Best-effort logging - don't fail the request if logging breaks.
+  try {
+    await getPool().query(
+      `INSERT INTO generation_logs (book_id, generation_type, prompt, status, result)
+       VALUES ($1, 'full_book', $2, 'pending', $3)`,
+      [
+        body.book_id,
+        `Title: ${body.title}\nDescription: ${body.description || ''}\nGenre: ${body.genre || ''}\nStyle: ${body.style || ''}\nOutline Prompt: ${body.outline_prompt || ''}`,
+        JSON.stringify({ job_id: result.job_id, user_id: userId }),
+      ]
+    )
+  } catch (error) {
+    console.warn('Failed to log generation job (non-fatal):', error)
+  }
 
-    return NextResponse.json({
+  return NextResponse.json(
+    {
       job_id: result.job_id,
       status: 'started',
       message: 'Book generation started. Poll /api/generate/book/status/:job_id for updates.',
-    }, { status: 202 })
-  } catch (error) {
-    console.error('POST /api/generate/book - Error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
-  }
+    },
+    { status: 202 }
+  )
 }

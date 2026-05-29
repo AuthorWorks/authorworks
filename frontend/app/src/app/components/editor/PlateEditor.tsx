@@ -1,25 +1,45 @@
 'use client'
 
 import {
-    Bold,
-    Heading1,
-    Heading2,
-    Heading3,
-    Italic,
-    List,
-    ListOrdered,
-    Loader2,
-    Quote,
-    Sparkles,
-    Underline
+  Bold,
+  Heading1,
+  Heading2,
+  Heading3,
+  Italic,
+  List,
+  ListOrdered,
+  Loader2,
+  Quote,
+  Sparkles,
+  Underline,
+  type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import { BaseEditor, createEditor, Descendant, Editor, Element as SlateElement, Text, Transforms } from 'slate'
+import {
+  BaseEditor,
+  createEditor,
+  Descendant,
+  Editor,
+  Element as SlateElement,
+  Text,
+  Transforms,
+} from 'slate'
 import { HistoryEditor, withHistory } from 'slate-history'
-import { Editable, ReactEditor, Slate, useSlate, withReact } from 'slate-react'
+import {
+  Editable,
+  ReactEditor,
+  RenderElementProps,
+  RenderLeafProps,
+  Slate,
+  useSlate,
+  withReact,
+} from 'slate-react'
 import { cn } from '../../lib/utils'
 
-// Types
+// ---------------------------------------------------------------------------
+// Slate type definitions
+// ---------------------------------------------------------------------------
+
 type CustomText = {
   text: string
   bold?: boolean
@@ -28,12 +48,23 @@ type CustomText = {
 }
 
 type ParagraphElement = { type: 'paragraph'; children: CustomText[] }
-type HeadingElement = { type: 'heading-one' | 'heading-two' | 'heading-three'; children: CustomText[] }
+type HeadingElement = {
+  type: 'heading-one' | 'heading-two' | 'heading-three'
+  children: CustomText[]
+}
 type BlockquoteElement = { type: 'block-quote'; children: CustomText[] }
-type ListElement = { type: 'bulleted-list' | 'numbered-list'; children: ListItemElement[] }
+type ListElement = {
+  type: 'bulleted-list' | 'numbered-list'
+  children: ListItemElement[]
+}
 type ListItemElement = { type: 'list-item'; children: CustomText[] }
 
-type CustomElement = ParagraphElement | HeadingElement | BlockquoteElement | ListElement | ListItemElement
+type CustomElement =
+  | ParagraphElement
+  | HeadingElement
+  | BlockquoteElement
+  | ListElement
+  | ListItemElement
 type CustomEditor = BaseEditor & ReactEditor & HistoryEditor
 
 declare module 'slate' {
@@ -44,119 +75,225 @@ declare module 'slate' {
   }
 }
 
-// Serialization helpers
+type MarkFormat = keyof Omit<CustomText, 'text'>
+type BlockFormat = CustomElement['type']
+
+// ---------------------------------------------------------------------------
+// Inline mark <-> markdown helpers
+// ---------------------------------------------------------------------------
+
+function serializeInline(text: CustomText): string {
+  let value = text.text
+  if (!value) return ''
+  if (text.bold) value = `**${value}**`
+  if (text.italic) value = `*${value}*`
+  if (text.underline) value = `<u>${value}</u>`
+  return value
+}
+
+const INLINE_PATTERNS: Array<{ regex: RegExp; mark: MarkFormat }> = [
+  { regex: /\*\*([^*]+)\*\*/g, mark: 'bold' },
+  { regex: /(?<!\*)\*([^*\n]+)\*(?!\*)/g, mark: 'italic' },
+  { regex: /<u>([^<]+)<\/u>/g, mark: 'underline' },
+]
+
+/** Splits a markdown line into a list of Slate text nodes preserving inline marks. */
+function deserializeInline(line: string): CustomText[] {
+  type Span = { text: string; marks: Set<MarkFormat> }
+  let spans: Span[] = [{ text: line, marks: new Set<MarkFormat>() }]
+
+  for (const { regex, mark } of INLINE_PATTERNS) {
+    const next: Span[] = []
+    for (const span of spans) {
+      if (span.marks.has(mark)) {
+        next.push(span)
+        continue
+      }
+      let cursor = 0
+      let match: RegExpExecArray | null
+      const matchedRegex = new RegExp(regex.source, regex.flags)
+      while ((match = matchedRegex.exec(span.text)) !== null) {
+        if (match.index > cursor) {
+          next.push({ text: span.text.slice(cursor, match.index), marks: new Set(span.marks) })
+        }
+        const inner = match[1]
+        const innerMarks = new Set(span.marks)
+        innerMarks.add(mark)
+        next.push({ text: inner, marks: innerMarks })
+        cursor = match.index + match[0].length
+      }
+      if (cursor < span.text.length) {
+        next.push({ text: span.text.slice(cursor), marks: new Set(span.marks) })
+      }
+    }
+    spans = next
+  }
+
+  const result = spans
+    .filter((span) => span.text.length > 0)
+    .map<CustomText>((span) => {
+      const node: CustomText = { text: span.text }
+      span.marks.forEach((m) => {
+        node[m] = true
+      })
+      return node
+    })
+  return result.length > 0 ? result : [{ text: '' }]
+}
+
+// ---------------------------------------------------------------------------
+// Markdown <-> Slate serialization
+// ---------------------------------------------------------------------------
+
 export function serializeToMarkdown(nodes: Descendant[]): string {
-  return nodes.map(node => serializeNode(node)).join('\n\n')
+  return nodes.map((node) => serializeNode(node)).join('\n\n')
 }
 
 function serializeNode(node: Descendant): string {
-  if (Text.isText(node)) {
-    let text = node.text
-    if (node.bold) text = `**${text}**`
-    if (node.italic) text = `*${text}*`
-    if (node.underline) text = `<u>${text}</u>`
-    return text
+  if (Text.isText(node)) return serializeInline(node)
+
+  if (node.type === 'bulleted-list' || node.type === 'numbered-list') {
+    return node.children
+      .map((child, index) => {
+        const inner = (child.children as CustomText[]).map(serializeInline).join('')
+        return node.type === 'numbered-list' ? `${index + 1}. ${inner}` : `- ${inner}`
+      })
+      .join('\n')
   }
 
-  const children = node.children.map(serializeNode).join('')
-
+  const children = (node.children as CustomText[]).map(serializeInline).join('')
   switch (node.type) {
-    case 'heading-one': return `# ${children}`
-    case 'heading-two': return `## ${children}`
-    case 'heading-three': return `### ${children}`
-    case 'block-quote': return `> ${children}`
-    case 'bulleted-list': return children
-    case 'numbered-list': return children
-    case 'list-item': return `- ${children}`
+    case 'heading-one':
+      return `# ${children}`
+    case 'heading-two':
+      return `## ${children}`
+    case 'heading-three':
+      return `### ${children}`
+    case 'block-quote':
+      return `> ${children}`
+    case 'list-item':
+      return `- ${children}`
     case 'paragraph':
-    default: return children
+    default:
+      return children
   }
 }
 
+const EMPTY_PARAGRAPH: ParagraphElement = { type: 'paragraph', children: [{ text: '' }] }
+
 export function deserializeFromMarkdown(markdown: string): Descendant[] {
-  if (!markdown || markdown.trim() === '') {
-    return [{ type: 'paragraph', children: [{ text: '' }] }]
+  if (!markdown || markdown.trim() === '') return [EMPTY_PARAGRAPH]
+
+  const nodes: CustomElement[] = []
+  let listBuffer: { type: 'bulleted-list' | 'numbered-list'; items: ListItemElement[] } | null = null
+
+  const flushList = () => {
+    if (!listBuffer) return
+    nodes.push({ type: listBuffer.type, children: listBuffer.items })
+    listBuffer = null
   }
 
-  const lines = markdown.split('\n')
-  const nodes: Descendant[] = []
+  for (const rawLine of markdown.split('\n')) {
+    const line = rawLine.replace(/\s+$/, '')
 
-  for (const line of lines) {
-    if (line.startsWith('# ')) {
-      nodes.push({ type: 'heading-one', children: [{ text: line.slice(2) }] })
+    const bullet = /^[-*]\s+(.*)$/.exec(line)
+    const numbered = /^\d+\.\s+(.*)$/.exec(line)
+
+    if (bullet) {
+      if (!listBuffer || listBuffer.type !== 'bulleted-list') {
+        flushList()
+        listBuffer = { type: 'bulleted-list', items: [] }
+      }
+      listBuffer.items.push({ type: 'list-item', children: deserializeInline(bullet[1]) })
+      continue
+    }
+    if (numbered) {
+      if (!listBuffer || listBuffer.type !== 'numbered-list') {
+        flushList()
+        listBuffer = { type: 'numbered-list', items: [] }
+      }
+      listBuffer.items.push({ type: 'list-item', children: deserializeInline(numbered[1]) })
+      continue
+    }
+
+    flushList()
+    if (line.startsWith('### ')) {
+      nodes.push({ type: 'heading-three', children: deserializeInline(line.slice(4)) })
     } else if (line.startsWith('## ')) {
-      nodes.push({ type: 'heading-two', children: [{ text: line.slice(3) }] })
-    } else if (line.startsWith('### ')) {
-      nodes.push({ type: 'heading-three', children: [{ text: line.slice(4) }] })
+      nodes.push({ type: 'heading-two', children: deserializeInline(line.slice(3)) })
+    } else if (line.startsWith('# ')) {
+      nodes.push({ type: 'heading-one', children: deserializeInline(line.slice(2)) })
     } else if (line.startsWith('> ')) {
-      nodes.push({ type: 'block-quote', children: [{ text: line.slice(2) }] })
-    } else if (line.startsWith('- ')) {
-      nodes.push({ type: 'paragraph', children: [{ text: line.slice(2) }] })
+      nodes.push({ type: 'block-quote', children: deserializeInline(line.slice(2)) })
     } else if (line.trim()) {
-      nodes.push({ type: 'paragraph', children: [{ text: line }] })
+      nodes.push({ type: 'paragraph', children: deserializeInline(line) })
     }
   }
 
-  return nodes.length > 0 ? nodes : [{ type: 'paragraph', children: [{ text: '' }] }]
+  flushList()
+  return nodes.length > 0 ? nodes : [EMPTY_PARAGRAPH]
 }
 
-// Helper functions
-const isMarkActive = (editor: Editor, format: keyof Omit<CustomText, 'text'>) => {
+// ---------------------------------------------------------------------------
+// Editor command helpers
+// ---------------------------------------------------------------------------
+
+const isMarkActive = (editor: Editor, format: MarkFormat) => {
   const marks = Editor.marks(editor)
   return marks ? marks[format] === true : false
 }
 
-const toggleMark = (editor: Editor, format: keyof Omit<CustomText, 'text'>) => {
-  const isActive = isMarkActive(editor, format)
-  if (isActive) {
+const toggleMark = (editor: Editor, format: MarkFormat) => {
+  if (isMarkActive(editor, format)) {
     Editor.removeMark(editor, format)
   } else {
     Editor.addMark(editor, format, true)
   }
 }
 
-const isBlockActive = (editor: Editor, format: string) => {
-  const nodes = Array.from(
-    Editor.nodes(editor, {
-      match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && n.type === format,
-    })
-  )
-  return nodes.length > 0
+const isBlockActive = (editor: Editor, format: BlockFormat) => {
+  const [match] = Editor.nodes(editor, {
+    match: (n) => !Editor.isEditor(n) && SlateElement.isElement(n) && n.type === format,
+  })
+  return Boolean(match)
 }
 
-const toggleBlock = (editor: Editor, format: string) => {
+const LIST_TYPES: ReadonlyArray<BlockFormat> = ['bulleted-list', 'numbered-list']
+
+const toggleBlock = (editor: Editor, format: BlockFormat) => {
   const isActive = isBlockActive(editor, format)
-  const isList = format === 'bulleted-list' || format === 'numbered-list'
+  const isList = LIST_TYPES.includes(format)
 
   Transforms.unwrapNodes(editor, {
-    match: n => !Editor.isEditor(n) && SlateElement.isElement(n) &&
-      (n.type === 'bulleted-list' || n.type === 'numbered-list'),
+    match: (n) =>
+      !Editor.isEditor(n) &&
+      SlateElement.isElement(n) &&
+      LIST_TYPES.includes(n.type as BlockFormat),
     split: true,
   })
 
-  const newType = isActive ? 'paragraph' : isList ? 'list-item' : format
-  Transforms.setNodes(editor, { type: newType as any })
+  Transforms.setNodes<SlateElement>(editor, {
+    type: isActive ? 'paragraph' : isList ? 'list-item' : format,
+  } as Partial<SlateElement>)
 
   if (!isActive && isList) {
-    const block = { type: format, children: [] }
-    Transforms.wrapNodes(editor, block as any)
+    Transforms.wrapNodes(editor, { type: format, children: [] } as ListElement)
   }
 }
 
-// Toolbar Button
-function ToolbarButton({
-  isActive = false,
-  disabled = false,
-  onMouseDown,
-  children,
-  title,
-}: {
+// ---------------------------------------------------------------------------
+// Toolbar
+// ---------------------------------------------------------------------------
+
+interface ToolbarButtonProps {
   isActive?: boolean
   disabled?: boolean
   onMouseDown: (e: React.MouseEvent) => void
   children: React.ReactNode
   title?: string
-}) {
+}
+
+function ToolbarButton({ isActive = false, disabled = false, onMouseDown, children, title }: ToolbarButtonProps) {
   return (
     <button
       type="button"
@@ -176,8 +313,7 @@ function ToolbarButton({
   )
 }
 
-// Mark Button
-function MarkButton({ format, icon: Icon, title }: { format: keyof Omit<CustomText, 'text'>; icon: any; title: string }) {
+function MarkButton({ format, icon: Icon, title }: { format: MarkFormat; icon: LucideIcon; title: string }) {
   const editor = useSlate()
   return (
     <ToolbarButton
@@ -193,8 +329,7 @@ function MarkButton({ format, icon: Icon, title }: { format: keyof Omit<CustomTe
   )
 }
 
-// Block Button
-function BlockButton({ format, icon: Icon, title }: { format: string; icon: any; title: string }) {
+function BlockButton({ format, icon: Icon, title }: { format: BlockFormat; icon: LucideIcon; title: string }) {
   const editor = useSlate()
   return (
     <ToolbarButton
@@ -210,7 +345,6 @@ function BlockButton({ format, icon: Icon, title }: { format: string; icon: any;
   )
 }
 
-// Toolbar
 function EditorToolbar({
   onAIEnhance,
   isAILoading,
@@ -220,7 +354,6 @@ function EditorToolbar({
 }) {
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      {/* Text formatting */}
       <div className="flex items-center gap-1">
         <MarkButton format="bold" icon={Bold} title="Bold (Ctrl+B)" />
         <MarkButton format="italic" icon={Italic} title="Italic (Ctrl+I)" />
@@ -229,7 +362,6 @@ function EditorToolbar({
 
       <div className="w-px h-6 bg-slate-700 mx-2" />
 
-      {/* Headings */}
       <div className="flex items-center gap-1">
         <BlockButton format="heading-one" icon={Heading1} title="Heading 1" />
         <BlockButton format="heading-two" icon={Heading2} title="Heading 2" />
@@ -238,14 +370,12 @@ function EditorToolbar({
 
       <div className="w-px h-6 bg-slate-700 mx-2" />
 
-      {/* Block elements */}
       <div className="flex items-center gap-1">
         <BlockButton format="block-quote" icon={Quote} title="Quote" />
         <BlockButton format="bulleted-list" icon={List} title="Bullet List" />
         <BlockButton format="numbered-list" icon={ListOrdered} title="Numbered List" />
       </div>
 
-      {/* AI Enhancement */}
       {onAIEnhance && (
         <>
           <div className="w-px h-6 bg-slate-700 mx-2" />
@@ -253,7 +383,7 @@ function EditorToolbar({
             <ToolbarButton
               onMouseDown={(e) => {
                 e.preventDefault()
-                onAIEnhance('style')
+                onAIEnhance('improve')
               }}
               disabled={isAILoading}
               title="Enhance with AI"
@@ -271,46 +401,79 @@ function EditorToolbar({
   )
 }
 
-// Custom element renderer
-const renderElement = (props: any) => {
-  const { attributes, children, element } = props
+// ---------------------------------------------------------------------------
+// Renderers
+// ---------------------------------------------------------------------------
+
+const renderElement = ({ attributes, children, element }: RenderElementProps) => {
   switch (element.type) {
     case 'heading-one':
-      return <h1 {...attributes} className="text-3xl font-bold mb-6 mt-8 text-white">{children}</h1>
+      return (
+        <h1 {...attributes} className="text-3xl font-bold mb-6 mt-8 text-white">
+          {children}
+        </h1>
+      )
     case 'heading-two':
-      return <h2 {...attributes} className="text-2xl font-bold mb-4 mt-6 text-white">{children}</h2>
+      return (
+        <h2 {...attributes} className="text-2xl font-bold mb-4 mt-6 text-white">
+          {children}
+        </h2>
+      )
     case 'heading-three':
-      return <h3 {...attributes} className="text-xl font-semibold mb-3 mt-4 text-slate-100">{children}</h3>
+      return (
+        <h3 {...attributes} className="text-xl font-semibold mb-3 mt-4 text-slate-100">
+          {children}
+        </h3>
+      )
     case 'block-quote':
-      return <blockquote {...attributes} className="border-l-4 border-indigo-500 pl-4 my-4 italic text-slate-300">{children}</blockquote>
+      return (
+        <blockquote
+          {...attributes}
+          className="border-l-4 border-indigo-500 pl-4 my-4 italic text-slate-300"
+        >
+          {children}
+        </blockquote>
+      )
     case 'bulleted-list':
-      return <ul {...attributes} className="mb-4 ml-6 list-disc">{children}</ul>
+      return (
+        <ul {...attributes} className="mb-4 ml-6 list-disc">
+          {children}
+        </ul>
+      )
     case 'numbered-list':
-      return <ol {...attributes} className="mb-4 ml-6 list-decimal">{children}</ol>
+      return (
+        <ol {...attributes} className="mb-4 ml-6 list-decimal">
+          {children}
+        </ol>
+      )
     case 'list-item':
-      return <li {...attributes} className="mb-1">{children}</li>
+      return (
+        <li {...attributes} className="mb-1">
+          {children}
+        </li>
+      )
     default:
-      return <p {...attributes} className="mb-4 leading-relaxed">{children}</p>
+      return (
+        <p {...attributes} className="mb-4 leading-relaxed">
+          {children}
+        </p>
+      )
   }
 }
 
-// Custom leaf renderer
-const renderLeaf = (props: any) => {
-  let { attributes, children, leaf } = props
-  if (leaf.bold) {
-    children = <strong>{children}</strong>
-  }
-  if (leaf.italic) {
-    children = <em>{children}</em>
-  }
-  if (leaf.underline) {
-    children = <u>{children}</u>
-  }
-  return <span {...attributes}>{children}</span>
+const renderLeaf = ({ attributes, children, leaf }: RenderLeafProps) => {
+  let rendered: React.ReactNode = children
+  if (leaf.bold) rendered = <strong>{rendered}</strong>
+  if (leaf.italic) rendered = <em>{rendered}</em>
+  if (leaf.underline) rendered = <u>{rendered}</u>
+  return <span {...attributes}>{rendered}</span>
 }
 
-// Main Editor Component
-interface PlateEditorProps {
+// ---------------------------------------------------------------------------
+// Main editor
+// ---------------------------------------------------------------------------
+
+export interface PlateEditorProps {
   initialValue?: Descendant[]
   onChange?: (value: Descendant[]) => void
   onAIEnhance?: (type: string) => void
@@ -332,46 +495,44 @@ export function PlateEditor({
   const editor = useMemo(() => withHistory(withReact(createEditor())), [])
 
   const [value, setValue] = useState<Descendant[]>(
-    initialValue || [{ type: 'paragraph', children: [{ text: '' }] }]
+    initialValue && initialValue.length > 0 ? initialValue : [EMPTY_PARAGRAPH]
   )
 
-  const handleChange = useCallback((newValue: Descendant[]) => {
-    setValue(newValue)
-    onChange?.(newValue)
-  }, [onChange])
+  const handleChange = useCallback(
+    (newValue: Descendant[]) => {
+      setValue(newValue)
+      onChange?.(newValue)
+    },
+    [onChange]
+  )
 
-  // Handle keyboard shortcuts
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (!event.ctrlKey && !event.metaKey) return
-
-    switch (event.key) {
-      case 'b': {
-        event.preventDefault()
-        toggleMark(editor, 'bold')
-        break
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      switch (event.key) {
+        case 'b':
+          event.preventDefault()
+          toggleMark(editor, 'bold')
+          break
+        case 'i':
+          event.preventDefault()
+          toggleMark(editor, 'italic')
+          break
+        case 'u':
+          event.preventDefault()
+          toggleMark(editor, 'underline')
+          break
       }
-      case 'i': {
-        event.preventDefault()
-        toggleMark(editor, 'italic')
-        break
-      }
-      case 'u': {
-        event.preventDefault()
-        toggleMark(editor, 'underline')
-        break
-      }
-    }
-  }, [editor])
+    },
+    [editor]
+  )
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
       <Slate editor={editor} initialValue={value} onChange={handleChange}>
         {!readOnly && (
           <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-xl border-b border-slate-800 p-3">
-            <EditorToolbar
-              onAIEnhance={onAIEnhance}
-              isAILoading={isAILoading}
-            />
+            <EditorToolbar onAIEnhance={onAIEnhance} isAILoading={isAILoading} />
           </div>
         )}
 

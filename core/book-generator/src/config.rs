@@ -5,6 +5,10 @@ use crate::error::{Result, BookGeneratorError};
 pub struct Config {
     pub llm_provider: String,
     pub openai_api_key: String,
+    /// OpenAI-compatible API base URL. Defaults to the homelab LiteLLM gateway
+    /// so the `openai` provider stays on self-hosted models; override with
+    /// OPENAI_API_BASE (e.g. https://api.openai.com/v1) to use a hosted API.
+    pub openai_api_base: String,
     pub anthropic_api_key: String,
     pub model: String,
     pub genre: String,
@@ -83,9 +87,15 @@ impl Config {
             _ => "deepseek-coder-v2:16b",
         };
         
+        let openai_api_base = get_env_or_default(
+            "OPENAI_API_BASE",
+            "http://litellm.inference.svc.cluster.local:4000/v1",
+        );
+
         Ok(Self {
             llm_provider,
             openai_api_key,
+            openai_api_base,
             anthropic_api_key,
             model: get_env_or_default("MODEL", default_model),
             genre: get_env_or_default("GENRE", "Science Fiction"),
@@ -111,6 +121,7 @@ impl Default for Config {
         Self {
             llm_provider: "ollama".to_string(),
             openai_api_key: String::new(),
+            openai_api_base: "http://litellm.inference.svc.cluster.local:4000/v1".to_string(),
             anthropic_api_key: String::new(),
             model: "deepseek-coder-v2:16b".to_string(),
             genre: "Science Fiction".to_string(),

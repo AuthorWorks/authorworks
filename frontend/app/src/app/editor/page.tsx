@@ -62,7 +62,7 @@ export default function EditorPage() {
         </div>
         <h1 className="text-3xl font-playfair font-bold mb-4">Start Writing</h1>
         <p className="text-slate-400 mb-8">
-          You don't have any books yet. Create your first book to start writing!
+          You don&apos;t have any books yet. Create your first book to start writing!
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link href="/books/new" className="btn-primary">

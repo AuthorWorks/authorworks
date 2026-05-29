@@ -1,32 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Pool } from 'pg'
+import { getUserId, unauthorized } from '@/app/lib/auth'
+import { countWords } from '@/app/lib/chapters'
+import { getPool } from '@/app/lib/db'
 import { getContentSchemaTables } from '@/app/lib/db-schema'
-
-function getPool() {
-  return new Pool({
-    connectionString: process.env.DATABASE_URL,
-  })
-}
-
-// Helper to get user ID from auth token
-async function getUserId(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader?.startsWith('Bearer ')) return null
-
-  const token = authHeader.substring(7)
-  const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://logto.security.svc.cluster.local:3001'
-
-  try {
-    const response = await fetch(`${LOGTO_ENDPOINT}/oidc/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!response.ok) return null
-    const userInfo = await response.json()
-    return userInfo.sub
-  } catch {
-    return null
-  }
-}
 
 interface SyncRequest {
   book_id: string
@@ -43,90 +19,75 @@ interface SyncRequest {
   epub_path?: string
 }
 
-// POST /api/generate/book/sync - Sync generated book data to database
+// POST /api/generate/book/sync - Persist generated chapters/metadata into the database.
 export async function POST(request: NextRequest) {
   const userId = await getUserId(request)
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!userId) return unauthorized()
+
+  let body: SyncRequest
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  if (!body.book_id || !body.job_id) {
+    return NextResponse.json({ error: 'book_id and job_id are required' }, { status: 400 })
   }
 
   const pool = getPool()
   try {
-    const body: SyncRequest = await request.json()
-    const { book_id, job_id, synopsis, themes, chapters, pdf_path, epub_path } = body
-
-    console.log(`Syncing book ${book_id} from job ${job_id}`)
-
     const { booksTable, chaptersTable, bookOwnerCol } = await getContentSchemaTables(pool)
     const bookCheck = await pool.query(
       `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
-      [book_id, userId]
+      [body.book_id, userId]
     )
     if (bookCheck.rows.length === 0) {
       return NextResponse.json({ error: 'Book not found' }, { status: 404 })
     }
 
-    if (chapters && chapters.length > 0) {
-      await pool.query(`DELETE FROM ${chaptersTable} WHERE book_id = $1`, [book_id])
-
-      for (const chapter of chapters) {
-        const content = chapter.content || [
-          `## ${chapter.title}`,
-          '',
-          chapter.summary || ''
-        ].join('\n')
-
+    if (body.chapters?.length) {
+      await pool.query(`DELETE FROM ${chaptersTable} WHERE book_id = $1`, [body.book_id])
+      for (const chapter of body.chapters) {
+        const content =
+          chapter.content || [`## ${chapter.title}`, '', chapter.summary || ''].join('\n')
         await pool.query(
           `INSERT INTO ${chaptersTable} (book_id, chapter_number, title, content, word_count)
            VALUES ($1, $2, $3, $4, $5)`,
-          [book_id, chapter.number, chapter.title, content, content.split(/\s+/).length]
+          [body.book_id, chapter.number, chapter.title, content, countWords(content)]
         )
       }
-
-      console.log(`Synced ${chapters.length} chapters for book ${book_id}`)
     }
 
-    const metadataUpdate: Record<string, any> = {
+    const metadataUpdate: Record<string, unknown> = {
       generation_completed: true,
-      generation_job_id: job_id,
+      generation_job_id: body.job_id,
     }
-    if (synopsis) metadataUpdate.ai_synopsis = synopsis
-    if (themes) metadataUpdate.themes = themes
-    if (pdf_path) metadataUpdate.pdf_path = pdf_path
-    if (epub_path) metadataUpdate.epub_path = epub_path
+    if (body.synopsis) metadataUpdate.ai_synopsis = body.synopsis
+    if (body.themes) metadataUpdate.themes = body.themes
+    if (body.pdf_path) metadataUpdate.pdf_path = body.pdf_path
+    if (body.epub_path) metadataUpdate.epub_path = body.epub_path
 
     await pool.query(
       `UPDATE ${booksTable} SET
          metadata = COALESCE(metadata, '{}'::jsonb) || $1,
          status = 'draft',
-         updated_at = NOW()
+         updated_at = NOW(),
+         word_count = (SELECT COALESCE(SUM(word_count), 0) FROM ${chaptersTable} WHERE book_id = $2)
        WHERE id = $2`,
-      [JSON.stringify(metadataUpdate), book_id]
+      [JSON.stringify(metadataUpdate), body.book_id]
     )
 
-    await pool.query(
-      `UPDATE ${booksTable}
-       SET word_count = (SELECT COALESCE(SUM(word_count), 0) FROM ${chaptersTable} WHERE book_id = $1)
-       WHERE id = $1`,
-      [book_id]
-    )
-
-    // Update generation log
     await pool.query(
       `UPDATE generation_logs
-       SET status = 'completed', completed_at = NOW()
+         SET status = 'completed', completed_at = NOW()
        WHERE book_id = $1 AND result->>'job_id' = $2`,
-      [book_id, job_id]
+      [body.book_id, body.job_id]
     )
 
-    return NextResponse.json({
-      success: true,
-      message: 'Book data synced successfully'
-    })
+    return NextResponse.json({ success: true, message: 'Book data synced successfully' })
   } catch (error) {
-    console.error('Error syncing book:', error)
+    console.error('POST /api/generate/book/sync failed:', error)
     return NextResponse.json({ error: 'Failed to sync book' }, { status: 500 })
-  } finally {
-    await pool.end()
   }
 }

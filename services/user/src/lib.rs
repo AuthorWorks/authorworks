@@ -175,40 +175,13 @@ fn register_handler(req: &Request) -> Result<Response, ServiceError> {
     }))
 }
 
-fn login_handler(req: &Request) -> Result<Response, ServiceError> {
-    let body: models::LoginRequest = parse_json_body(req)?;
-    
-    // In production, fetch user from database
-    // For now, return a mock response demonstrating the flow
-    
-    // Validate credentials would happen here
-    if body.email.is_empty() || body.password.is_empty() {
-        return Err(ServiceError::Unauthorized("Invalid credentials".into()));
-    }
-    
-    // Mock user for demonstration
-    let user = models::User {
-        id: Uuid::new_v4(),
-        email: body.email.clone(),
-        username: body.email.split('@').next().unwrap_or("user").to_string(),
-        display_name: "Demo User".to_string(),
-        password_hash: None,
-        auth_provider: Some(models::AuthProvider::Local),
-        auth_provider_user_id: None,
-        profile: models::Profile::default(),
-        roles: vec!["user".to_string()],
-        status: models::UserStatus::Active,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        last_login_at: Some(Utc::now()),
-    };
-    
-    let tokens = auth::generate_tokens(&user)?;
-    
-    json_response(200, serde_json::json!({
-        "user": models::PublicUser::from(&user),
-        "tokens": tokens
-    }))
+fn login_handler(_req: &Request) -> Result<Response, ServiceError> {
+    // Local username/password login is intentionally unsupported in this deployment.
+    // Authentication is delegated to Logto via the `/auth/logto/authorize` and
+    // `/auth/callback` endpoints, plus the Next.js PKCE flow.
+    Err(ServiceError::BadRequest(
+        "Local login is disabled. Use the Logto OAuth flow at /auth/logto/authorize".into(),
+    ))
 }
 
 fn logout_handler(req: &Request) -> Result<Response, ServiceError> {

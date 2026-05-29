@@ -1,41 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Pool } from 'pg'
+import { getUserId, unauthorized } from '@/app/lib/auth'
+import { getPool } from '@/app/lib/db'
 import { getContentSchemaTables } from '@/app/lib/db-schema'
 
-function getPool() {
-  return new Pool({
-    connectionString: process.env.DATABASE_URL,
-  })
+interface RouteContext {
+  params: { id: string }
 }
 
-async function getUserId(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader?.startsWith('Bearer ')) return null
+const UPDATABLE_FIELDS = ['title', 'description', 'genre', 'status', 'cover_image_url', 'metadata'] as const
+type UpdatableField = (typeof UPDATABLE_FIELDS)[number]
 
-  const token = authHeader.substring(7)
-  const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://logto.security.svc.cluster.local:3001'
-
-  try {
-    const response = await fetch(`${LOGTO_ENDPOINT}/oidc/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!response.ok) return null
-    const userInfo = await response.json()
-    return userInfo.sub
-  } catch {
-    return null
-  }
-}
-
-// GET /api/books/[id] - Get a single book
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// GET /api/books/[id] - Fetch a single book owned by the user.
+export async function GET(request: NextRequest, { params }: RouteContext) {
   const userId = await getUserId(request)
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!userId) return unauthorized()
 
   const pool = getPool()
   try {
@@ -44,97 +22,64 @@ export async function GET(
       `SELECT * FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
       [params.id, userId]
     )
-
     if (result.rows.length === 0) {
       return NextResponse.json({ error: 'Book not found' }, { status: 404 })
     }
-
     return NextResponse.json(result.rows[0])
   } catch (error) {
-    console.error('Error fetching book:', error)
+    console.error('GET /api/books/[id] failed:', error)
     return NextResponse.json({ error: 'Failed to fetch book' }, { status: 500 })
-  } finally {
-    await pool.end()
   }
 }
 
-// PUT /api/books/[id] - Update a book
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// PUT /api/books/[id] - Update mutable fields on a book.
+export async function PUT(request: NextRequest, { params }: RouteContext) {
   const userId = await getUserId(request)
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!userId) return unauthorized()
+
+  let body: Partial<Record<UpdatableField, unknown>>
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  const updates: string[] = ['updated_at = NOW()']
+  const values: unknown[] = []
+  for (const field of UPDATABLE_FIELDS) {
+    if (body[field] === undefined) continue
+    values.push(field === 'metadata' ? JSON.stringify(body[field]) : body[field])
+    updates.push(`${field} = $${values.length}`)
+  }
+
+  if (values.length === 0) {
+    return NextResponse.json({ error: 'No updatable fields provided' }, { status: 400 })
   }
 
   const pool = getPool()
   try {
-    const body = await request.json()
-    const { title, description, genre, status, cover_image_url, metadata } = body
-
-    // Build update query dynamically
-    const updates: string[] = ['updated_at = NOW()']
-    const values: any[] = []
-    let paramIndex = 1
-
-    if (title !== undefined) {
-      updates.push(`title = $${paramIndex++}`)
-      values.push(title)
-    }
-    if (description !== undefined) {
-      updates.push(`description = $${paramIndex++}`)
-      values.push(description)
-    }
-    if (genre !== undefined) {
-      updates.push(`genre = $${paramIndex++}`)
-      values.push(genre)
-    }
-    if (status !== undefined) {
-      updates.push(`status = $${paramIndex++}`)
-      values.push(status)
-    }
-    if (cover_image_url !== undefined) {
-      updates.push(`cover_image_url = $${paramIndex++}`)
-      values.push(cover_image_url)
-    }
-    if (metadata !== undefined) {
-      updates.push(`metadata = $${paramIndex++}`)
-      values.push(JSON.stringify(metadata))
-    }
-
-    values.push(params.id, userId)
-
     const { booksTable, bookOwnerCol } = await getContentSchemaTables(pool)
+    values.push(params.id, userId)
     const result = await pool.query(
       `UPDATE ${booksTable} SET ${updates.join(', ')}
-       WHERE id = $${paramIndex++} AND ${bookOwnerCol} = $${paramIndex}
-       RETURNING *`,
+         WHERE id = $${values.length - 1} AND ${bookOwnerCol} = $${values.length}
+         RETURNING *`,
       values
     )
-
     if (result.rows.length === 0) {
       return NextResponse.json({ error: 'Book not found' }, { status: 404 })
     }
-
     return NextResponse.json(result.rows[0])
   } catch (error) {
-    console.error('Error updating book:', error)
+    console.error('PUT /api/books/[id] failed:', error)
     return NextResponse.json({ error: 'Failed to update book' }, { status: 500 })
-  } finally {
-    await pool.end()
   }
 }
 
-// DELETE /api/books/[id] - Delete a book
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// DELETE /api/books/[id] - Delete a book and cascade owned chapters/logs.
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
   const userId = await getUserId(request)
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!userId) return unauthorized()
 
   const pool = getPool()
   try {
@@ -143,16 +88,12 @@ export async function DELETE(
       `DELETE FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2 RETURNING id`,
       [params.id, userId]
     )
-
     if (result.rows.length === 0) {
       return NextResponse.json({ error: 'Book not found' }, { status: 404 })
     }
-
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting book:', error)
+    console.error('DELETE /api/books/[id] failed:', error)
     return NextResponse.json({ error: 'Failed to delete book' }, { status: 500 })
-  } finally {
-    await pool.end()
   }
 }

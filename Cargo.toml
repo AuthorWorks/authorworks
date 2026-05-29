@@ -17,8 +17,7 @@ members = [
     "workers/media",
 ]
 exclude = [
-    "authorworks-engine",  # Submodule with its own Cargo.toml
-    "archive",             # Archived services for reference
+    "authorworks-engine",
 ]
 resolver = "2"
 

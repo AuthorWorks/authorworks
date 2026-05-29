@@ -16,6 +16,10 @@
 #   LOGTO_APP_SECRET      Logto application secret (use placeholder if not yet set up)
 #
 # Optional env:
+#   AI_API_KEY            LiteLLM gateway key for self-hosted LLMs (homelab).
+#                         Required by the frontend/book-generator deployments;
+#                         omitted from Secret if empty (deploys will then fail
+#                         to mount key `ai-api-key`).
 #   ANTHROPIC_API_KEY     omitted from Secret if empty
 #   CONTROLLER_NAMESPACE  default: kube-system
 #   CONTROLLER_NAME       default: sealed-secrets-controller
@@ -66,6 +70,7 @@ prompt_silent  DATABASE_URL  "DATABASE_URL"
 prompt_visible LOGTO_APP_ID  "LOGTO_APP_ID (placeholder OK)"
 prompt_silent  LOGTO_APP_SECRET "LOGTO_APP_SECRET (placeholder OK)"
 
+AI_API_KEY="${AI_API_KEY-}"
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY-}"
 
 echo "Sealing ghcr-pull-secret..."
@@ -87,6 +92,9 @@ trap 'rm -f "$CERT_FILE" "$SECRET_YAML_TMP"' EXIT
     "--from-literal=logto-app-id=$LOGTO_APP_ID"
     "--from-literal=logto-app-secret=$LOGTO_APP_SECRET"
   )
+  if [[ -n "$AI_API_KEY" ]]; then
+    literals+=("--from-literal=ai-api-key=$AI_API_KEY")
+  fi
   if [[ -n "$ANTHROPIC_API_KEY" ]]; then
     literals+=("--from-literal=anthropic-api-key=$ANTHROPIC_API_KEY")
   fi

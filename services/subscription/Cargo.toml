@@ -9,6 +9,7 @@ spin-sdk = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_urlencoded = "0.7"
 chrono = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }

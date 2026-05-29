@@ -60,10 +60,9 @@ export default function ChapterEditorPage({
   const { data: chapter, isLoading: chapterLoading } = useQuery<Chapter>({
     queryKey: ['chapter', params.chapterId],
     queryFn: async () => {
-      const response = await fetch(
-        `/api/books/${params.id}/chapters/${params.chapterId}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      )
+      const response = await fetch(`/api/chapters/${params.chapterId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
       if (!response.ok) throw new Error('Failed to fetch chapter')
       return response.json()
     },
@@ -81,17 +80,14 @@ export default function ChapterEditorPage({
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async (data: { title?: string; content?: string }) => {
-      const response = await fetch(
-        `/api/books/${params.id}/chapters/${params.chapterId}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify(data),
-        }
-      )
+      const response = await fetch(`/api/chapters/${params.chapterId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(data),
+      })
       if (!response.ok) throw new Error('Failed to save')
       return response.json()
     },

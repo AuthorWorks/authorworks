@@ -1,6 +1,12 @@
 # Content worker: polls content.generation_jobs, same DB as API.
-# Optional for current frontend (outline is inline; full book uses book-generator HTTP).
-# Required when using Spin content service that enqueues outline/chapter/enhance jobs.
+# DISABLED in v1 (replicas: 0). The current frontend generates outlines inline
+# and runs full-book generation through the book-generator HTTP service, so
+# nothing enqueues content.generation_jobs. Enabling it would also require the
+# `content.*` schema, which the frontend's Logto (string) user-id path is not
+# compatible with (it expects content.books.author_id::uuid). Re-enable only
+# alongside a Spin content service that owns the content schema.
+# NOTE: ArgoCD ignores /spec/replicas (see applicationset.yaml), so this is
+# also enforced live via `kubectl scale ... --replicas=0`.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,7 +15,7 @@ metadata:
   labels:
     app: authorworks-content-worker
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: authorworks-content-worker

@@ -1023,8 +1023,14 @@ fn get_user_credit_history(req: &Request) -> Result<Response, ServiceError> {
     let user_id = get_user_id(req)?;
     let conn = get_db_connection()?;
 
-    // Parse query param for limit (default 50)
-    let limit = 50; // TODO: Parse from query string
+    let limit = req
+        .query()
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("limit="))
+        .and_then(|raw| raw.parse::<i32>().ok())
+        .map(|raw| raw.clamp(1, 500))
+        .unwrap_or(50);
+
     credits::get_credit_history(&conn, user_id, limit)
 }
 

@@ -1,147 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Pool } from 'pg'
+import { getUserId, unauthorized } from '@/app/lib/auth'
+import { getPool } from '@/app/lib/db'
+import { getContentSchemaTables } from '@/app/lib/db-schema'
 
-// Database connection pool - read inside handler to avoid build-time caching
-function getPool() {
-  return new Pool({
-    connectionString: process.env.DATABASE_URL,
-  })
-}
+const VALID_STATUSES = new Set(['draft', 'writing', 'editing', 'published', 'archived'])
 
-// Helper to get user ID from auth token
-async function getUserId(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get('authorization')
-  console.log('getUserId - authHeader present:', !!authHeader)
-  if (!authHeader?.startsWith('Bearer ')) {
-    console.log('getUserId - No Bearer token')
-    return null
-  }
-
-  const token = authHeader.substring(7)
-  console.log('getUserId - Token length:', token.length)
-  const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://logto.security.svc.cluster.local:3001'
-  console.log('getUserId - LOGTO_ENDPOINT:', LOGTO_ENDPOINT)
-
-  try {
-    const response = await fetch(`${LOGTO_ENDPOINT}/oidc/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    console.log('getUserId - Logto response status:', response.status)
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.log('getUserId - Logto error:', errorText)
-      return null
-    }
-    const userInfo = await response.json()
-    console.log('getUserId - Got user sub:', userInfo.sub)
-    return userInfo.sub
-  } catch (error) {
-    console.error('getUserId - Exception:', error)
-    return null
-  }
-}
-
-// GET /api/books - List all books for the user (content.books author_id or books user_id)
+// GET /api/books - List books owned by the authenticated user.
 export async function GET(request: NextRequest) {
   const userId = await getUserId(request)
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!userId) return unauthorized()
+
+  const { searchParams } = new URL(request.url)
+  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10) || 50, 1), 500)
+  const status = searchParams.get('status')
+  if (status && !VALID_STATUSES.has(status)) {
+    return NextResponse.json({ error: 'Invalid status filter' }, { status: 400 })
   }
 
   const pool = getPool()
   try {
-    const { searchParams } = new URL(request.url)
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const status = searchParams.get('status')
+    const { booksTable, bookOwnerCol } = await getContentSchemaTables(pool)
 
-    const hasContentSchema = await pool
-      .query(
-        `SELECT 1 FROM information_schema.tables WHERE table_schema = 'content' AND table_name = 'books' LIMIT 1`
-      )
-      .then((r: { rows: unknown[] }) => r.rows.length > 0)
-
-    let result
-    if (hasContentSchema) {
-      let query =
-        'SELECT id, author_id AS user_id, title, description, genre, status, word_count, metadata, created_at, updated_at FROM content.books WHERE author_id = $1::uuid'
-      const params: any[] = [userId]
-      if (status) {
-        query += ' AND status = $2'
-        params.push(status)
-      }
-      query += ' ORDER BY updated_at DESC LIMIT $' + (params.length + 1)
-      params.push(limit)
-      result = await pool.query(query, params)
-    } else {
-      let query = 'SELECT * FROM books WHERE user_id = $1'
-      const params: any[] = [userId]
-      if (status) {
-        query += ' AND status = $2'
-        params.push(status)
-      }
-      query += ' ORDER BY updated_at DESC LIMIT $' + (params.length + 1)
-      params.push(limit)
-      result = await pool.query(query, params)
+    const params: unknown[] = [userId]
+    let query = `SELECT id, ${bookOwnerCol} AS user_id, title, description, genre, status,
+                    word_count, metadata, created_at, updated_at
+             FROM ${booksTable} WHERE ${bookOwnerCol} = $1`
+    if (status) {
+      params.push(status)
+      query += ` AND status = $${params.length}`
     }
+    params.push(limit)
+    query += ` ORDER BY updated_at DESC LIMIT $${params.length}`
 
+    const result = await pool.query(query, params)
     return NextResponse.json({ books: result.rows })
   } catch (error) {
-    console.error('Error fetching books:', error)
+    console.error('GET /api/books failed:', error)
     return NextResponse.json({ error: 'Failed to fetch books' }, { status: 500 })
-  } finally {
-    await pool.end()
   }
 }
 
-// POST /api/books - Create a new book
+// POST /api/books - Create a new book for the authenticated user.
 export async function POST(request: NextRequest) {
-  console.log('POST /api/books - starting')
-
   const userId = await getUserId(request)
-  console.log('POST /api/books - userId:', userId)
+  if (!userId) return unauthorized()
 
-  if (!userId) {
-    console.log('POST /api/books - Unauthorized, no userId')
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  let body: { title?: string; description?: string; genre?: string; metadata?: unknown }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  const title = body.title?.trim()
+  if (!title) {
+    return NextResponse.json({ error: 'Title is required' }, { status: 400 })
   }
 
   const pool = getPool()
   try {
-    const body = await request.json()
-    console.log('POST /api/books - body:', JSON.stringify(body))
-    const { title, description, genre, metadata } = body
+    const { booksTable, bookOwnerCol } = await getContentSchemaTables(pool)
+    const isContentSchema = booksTable.startsWith('content.')
+    const metadataJson = body.metadata ? JSON.stringify(body.metadata) : '{}'
 
-    if (!title?.trim()) {
-      console.log('POST /api/books - Missing title')
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 })
-    }
-
-    const hasContentSchema = await pool
-      .query(
-        `SELECT 1 FROM information_schema.tables WHERE table_schema = 'content' AND table_name = 'books' LIMIT 1`
-      )
-      .then((r: { rows: unknown[] }) => r.rows.length > 0)
-
-    const result = hasContentSchema
+    const result = isContentSchema
       ? await pool.query(
-          `INSERT INTO content.books (id, author_id, title, description, genre, status, metadata, created_at, updated_at)
+          `INSERT INTO ${booksTable}
+             (id, ${bookOwnerCol}, title, description, genre, status, metadata, created_at, updated_at)
            VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4, 'draft', $5, NOW(), NOW())
-           RETURNING id, author_id AS user_id, title, description, genre, status, metadata, created_at, updated_at`,
-          [userId, title.trim(), description || null, genre || null, metadata ? JSON.stringify(metadata) : '{}']
+           RETURNING id, ${bookOwnerCol} AS user_id, title, description, genre, status, metadata, created_at, updated_at`,
+          [userId, title, body.description ?? null, body.genre ?? null, metadataJson]
         )
       : await pool.query(
-          `INSERT INTO books (user_id, title, description, genre, metadata)
+          `INSERT INTO ${booksTable}
+             (${bookOwnerCol}, title, description, genre, metadata)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING *`,
-          [userId, title.trim(), description || null, genre || null, metadata ? JSON.stringify(metadata) : '{}']
+          [userId, title, body.description ?? null, body.genre ?? null, metadataJson]
         )
 
-    console.log('POST /api/books - Success, book id:', result.rows[0]?.id)
     return NextResponse.json(result.rows[0], { status: 201 })
   } catch (error) {
-    console.error('POST /api/books - Error:', error)
+    console.error('POST /api/books failed:', error)
     return NextResponse.json({ error: 'Failed to create book' }, { status: 500 })
-  } finally {
-    await pool.end()
   }
 }

@@ -1,51 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Pool } from 'pg'
+import { getUserId, unauthorized } from '@/app/lib/auth'
+import { countWords } from '@/app/lib/chapters'
+import { getPool } from '@/app/lib/db'
 import { getContentSchemaTables } from '@/app/lib/db-schema'
 
-function getPool() {
-  return new Pool({
-    connectionString: process.env.DATABASE_URL,
-  })
+interface RouteContext {
+  params: { id: string }
 }
 
-async function getUserId(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader?.startsWith('Bearer ')) return null
-
-  const token = authHeader.substring(7)
-  const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'http://logto.security.svc.cluster.local:3001'
-
-  try {
-    const response = await fetch(`${LOGTO_ENDPOINT}/oidc/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!response.ok) return null
-    const userInfo = await response.json()
-    return userInfo.sub
-  } catch {
-    return null
-  }
-}
-
-// GET /api/books/[id]/chapters - List chapters for a book
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// GET /api/books/[id]/chapters - List chapters in order for the given book.
+export async function GET(request: NextRequest, { params }: RouteContext) {
   const userId = await getUserId(request)
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!userId) return unauthorized()
 
   const pool = getPool()
   try {
     const { booksTable, chaptersTable, bookOwnerCol } = await getContentSchemaTables(pool)
-    const bookCheck = await pool.query(
+    const owned = await pool.query(
       `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
       [params.id, userId]
     )
-
-    if (bookCheck.rows.length === 0) {
+    if (owned.rows.length === 0) {
       return NextResponse.json({ error: 'Book not found' }, { status: 404 })
     }
 
@@ -53,59 +28,51 @@ export async function GET(
       `SELECT * FROM ${chaptersTable} WHERE book_id = $1 ORDER BY chapter_number ASC`,
       [params.id]
     )
-
     return NextResponse.json({ chapters: result.rows })
   } catch (error) {
-    console.error('Error fetching chapters:', error)
+    console.error('GET /api/books/[id]/chapters failed:', error)
     return NextResponse.json({ error: 'Failed to fetch chapters' }, { status: 500 })
-  } finally {
-    await pool.end()
   }
 }
 
-// POST /api/books/[id]/chapters - Create a new chapter
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// POST /api/books/[id]/chapters - Create a new chapter at the end of the book.
+export async function POST(request: NextRequest, { params }: RouteContext) {
   const userId = await getUserId(request)
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!userId) return unauthorized()
+
+  let body: { title?: string | null; content?: string | null }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
   const pool = getPool()
   try {
     const { booksTable, chaptersTable, bookOwnerCol } = await getContentSchemaTables(pool)
-    const bookCheck = await pool.query(
+    const owned = await pool.query(
       `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
       [params.id, userId]
     )
-
-    if (bookCheck.rows.length === 0) {
+    if (owned.rows.length === 0) {
       return NextResponse.json({ error: 'Book not found' }, { status: 404 })
     }
 
-    const body = await request.json()
-    const { title, content } = body
-
-    const maxResult = await pool.query(
-      `SELECT COALESCE(MAX(chapter_number), 0) + 1 as next_num FROM ${chaptersTable} WHERE book_id = $1`,
+    const next = await pool.query(
+      `SELECT COALESCE(MAX(chapter_number), 0) + 1 AS next_num FROM ${chaptersTable} WHERE book_id = $1`,
       [params.id]
     )
-    const nextChapterNumber = maxResult.rows[0].next_num
+    const nextNumber = next.rows[0].next_num
 
+    const content = body.content ?? ''
     const result = await pool.query(
       `INSERT INTO ${chaptersTable} (book_id, chapter_number, title, content, word_count)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [params.id, nextChapterNumber, title || null, content || '', content ? content.split(/\s+/).length : 0]
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [params.id, nextNumber, body.title ?? null, content, countWords(content)]
     )
-
     return NextResponse.json(result.rows[0], { status: 201 })
   } catch (error) {
-    console.error('Error creating chapter:', error)
+    console.error('POST /api/books/[id]/chapters failed:', error)
     return NextResponse.json({ error: 'Failed to create chapter' }, { status: 500 })
-  } finally {
-    await pool.end()
   }
 }

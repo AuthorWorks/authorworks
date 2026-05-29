@@ -67,7 +67,7 @@ export default function Dashboard() {
           Welcome back, {user?.name?.split(' ')[0] || 'Author'}
         </h1>
         <p className="text-slate-400">
-          Here's what's happening with your books today.
+          Here&apos;s what&apos;s happening with your books today.
         </p>
       </div>
 
@@ -206,8 +206,8 @@ export default function Dashboard() {
                 <Sparkles className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />
                 <div>
                   <p className="text-slate-300 text-sm">
-                    "The first draft is just you telling yourself the story. Don't worry about perfection—
-                    that's what editing is for."
+                    &ldquo;The first draft is just you telling yourself the story. Don&apos;t worry about perfection—
+                    that&apos;s what editing is for.&rdquo;
                   </p>
                   <p className="text-slate-500 text-xs mt-2">— Terry Pratchett</p>
                 </div>

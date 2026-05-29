@@ -85,14 +85,21 @@ spec:
             secretKeyRef:
               name: authorworks-secrets
               key: database-url
-        # AI Provider configuration (ollama, anthropic, or openai)
+        # AI Provider configuration. Default: homelab self-hosted LLMs via the
+        # LiteLLM OpenAI-compatible gateway. Set AI_PROVIDER=anthropic (+ key)
+        # to opt into a hosted API instead.
         - name: AI_PROVIDER
-          value: "ollama"
-        - name: OLLAMA_BASE_URL
-          value: "http://192.168.1.200:11434"
+          value: "litellm"
+        - name: AI_BASE_URL
+          value: "http://litellm.inference.svc.cluster.local:4000/v1"
         - name: AI_MODEL
-          value: "deepseek-coder-v2:16b"
-        # Optional API keys (only needed for respective providers)
+          value: "chat"
+        - name: AI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: authorworks-secrets
+              key: ai-api-key
+        # Optional hosted-provider key (only used when AI_PROVIDER=anthropic)
         - name: ANTHROPIC_API_KEY
           valueFrom:
             secretKeyRef:

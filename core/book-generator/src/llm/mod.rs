@@ -144,6 +144,7 @@ pub fn create_llm(config: &Config) -> Result<Box<dyn langchain_rust::language_mo
                 .with_config(
                     OpenAIConfig::default()
                         .with_api_key(&config.openai_api_key)
+                        .with_api_base(&config.openai_api_base)
                 )
                 .with_model(model);
             Ok(Box::new(openai))

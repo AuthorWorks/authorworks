@@ -111,7 +111,7 @@ export default function Home() {
               <h3 className="text-xl font-semibold mb-2">AI Writing Assistant</h3>
               <p className="text-slate-400">
                 Get intelligent suggestions for plot development, dialogue, and descriptions. 
-                Break through writer's block with AI-powered inspiration.
+                Break through writer&apos;s block with AI-powered inspiration.
               </p>
             </div>
 

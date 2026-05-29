@@ -6,24 +6,37 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import type { Descendant } from 'slate'
 import { useDebouncedCallback } from 'use-debounce'
 import { useAuth } from '../../hooks/useAuth'
+import {
+  deserializeFromMarkdown,
+  serializeToMarkdown,
+} from '../../components/editor/PlateEditor'
 
-// Dynamically import the editor to avoid SSR issues with Slate
 const PlateEditor = dynamic(
-  () => import('../../components/editor/PlateEditor').then(mod => mod.PlateEditor),
+  () => import('../../components/editor/PlateEditor').then((mod) => mod.PlateEditor),
   {
     ssr: false,
     loading: () => (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
       </div>
-    )
+    ),
   }
 )
 
-// Import serialization helpers
-import { deserializeFromMarkdown, serializeToMarkdown } from '../../components/editor/PlateEditor'
+interface Chapter {
+  id: string
+  book_id: string
+  title: string | null
+  content: string | null
+  word_count: number | null
+}
+
+interface EnhanceResponse {
+  result: string
+}
 
 export default function EditorPage() {
   const params = useParams()
@@ -32,7 +45,7 @@ export default function EditorPage() {
   const { isAuthenticated, isLoading: authLoading, accessToken } = useAuth()
   const chapterId = params.id as string
 
-  const [editorValue, setEditorValue] = useState<any[]>([])
+  const [editorValue, setEditorValue] = useState<Descendant[]>([])
   const [title, setTitle] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
@@ -40,13 +53,10 @@ export default function EditorPage() {
   const [isEditorReady, setIsEditorReady] = useState(false)
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push('/')
-    }
+    if (!authLoading && !isAuthenticated) router.push('/')
   }, [authLoading, isAuthenticated, router])
 
-  // Fetch chapter data
-  const { data: chapter, isLoading: chapterLoading } = useQuery({
+  const { data: chapter, isLoading: chapterLoading } = useQuery<Chapter>({
     queryKey: ['chapter', chapterId],
     queryFn: async () => {
       const response = await fetch(`/api/chapters/${chapterId}`, {
@@ -58,25 +68,20 @@ export default function EditorPage() {
     enabled: isAuthenticated && !!chapterId,
   })
 
-  // Set initial content when chapter loads
   useEffect(() => {
     if (chapter && !isEditorReady) {
-      const content = chapter.content || ''
-      const nodes = deserializeFromMarkdown(content)
-      setEditorValue(nodes)
-      setTitle(chapter.title || '')
-      setWordCount(chapter.word_count || 0)
+      setEditorValue(deserializeFromMarkdown(chapter.content ?? ''))
+      setTitle(chapter.title ?? '')
+      setWordCount(chapter.word_count ?? 0)
       setIsEditorReady(true)
     }
   }, [chapter, isEditorReady])
 
-  // Calculate word count from editor value
-  const calculateWordCount = useCallback((value: any[]) => {
+  const calculateWordCount = useCallback((value: Descendant[]) => {
     const text = serializeToMarkdown(value)
     return text.split(/\s+/).filter(Boolean).length
   }, [])
 
-  // Save mutation
   const saveMutation = useMutation({
     mutationFn: async (data: { title: string; content: string }) => {
       const response = await fetch(`/api/chapters/${chapterId}`, {
@@ -96,35 +101,33 @@ export default function EditorPage() {
     },
   })
 
-  // Auto-save with debounce
-  const debouncedSave = useDebouncedCallback((value: any[]) => {
-    const content = serializeToMarkdown(value)
+  const debouncedSave = useDebouncedCallback((value: Descendant[]) => {
     setIsSaving(true)
-    saveMutation.mutate({ title, content }, {
-      onSettled: () => setIsSaving(false)
-    })
+    saveMutation.mutate(
+      { title, content: serializeToMarkdown(value) },
+      { onSettled: () => setIsSaving(false) }
+    )
   }, 2000)
 
-  // Handle editor content change
-  const handleEditorChange = useCallback((value: any[]) => {
-    setEditorValue(value)
-    setWordCount(calculateWordCount(value))
-    debouncedSave(value)
-  }, [calculateWordCount, debouncedSave])
+  const handleEditorChange = useCallback(
+    (value: Descendant[]) => {
+      setEditorValue(value)
+      setWordCount(calculateWordCount(value))
+      debouncedSave(value)
+    },
+    [calculateWordCount, debouncedSave]
+  )
 
-  // Manual save
   const handleSave = useCallback(() => {
-    const content = serializeToMarkdown(editorValue)
     setIsSaving(true)
-    saveMutation.mutate({ title, content }, {
-      onSettled: () => setIsSaving(false)
-    })
+    saveMutation.mutate(
+      { title, content: serializeToMarkdown(editorValue) },
+      { onSettled: () => setIsSaving(false) }
+    )
   }, [editorValue, title, saveMutation])
 
-  // AI enhancement
   const enhanceMutation = useMutation({
-    mutationFn: async (type: string) => {
-      const content = serializeToMarkdown(editorValue)
+    mutationFn: async (mode: string) => {
       const response = await fetch('/api/generate/enhance', {
         method: 'POST',
         headers: {
@@ -133,23 +136,20 @@ export default function EditorPage() {
         },
         body: JSON.stringify({
           chapter_id: chapterId,
-          content,
-          enhancement_type: type,
+          text: serializeToMarkdown(editorValue),
+          mode,
         }),
       })
       if (!response.ok) throw new Error('Failed to enhance')
-      return response.json()
+      return (await response.json()) as EnhanceResponse
     },
     onSuccess: (data) => {
-      // Update editor with enhanced content
-      if (data.content) {
-        const nodes = deserializeFromMarkdown(data.content)
-        setEditorValue(nodes)
+      if (data.result) {
+        setEditorValue(deserializeFromMarkdown(data.result))
       }
     },
   })
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -173,7 +173,6 @@ export default function EditorPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col">
-      {/* Header Bar */}
       <div className="sticky top-16 z-40 bg-slate-900/95 backdrop-blur-xl border-b border-slate-800">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -200,7 +199,6 @@ export default function EditorPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Status indicator */}
             <div className="flex items-center gap-2 text-sm text-slate-500">
               {isSaving ? (
                 <>
@@ -215,17 +213,11 @@ export default function EditorPage() {
               ) : null}
             </div>
 
-            {/* Word count */}
             <div className="text-sm text-slate-500 border-l border-slate-700 pl-4">
               {wordCount.toLocaleString()} words
             </div>
 
-            {/* Save button */}
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="btn-primary"
-            >
+            <button onClick={handleSave} disabled={isSaving} className="btn-primary">
               {isSaving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -237,7 +229,6 @@ export default function EditorPage() {
         </div>
       </div>
 
-      {/* Editor Area */}
       <div className="flex-1 max-w-4xl mx-auto w-full">
         {isEditorReady && (
           <PlateEditor
@@ -251,7 +242,6 @@ export default function EditorPage() {
         )}
       </div>
 
-      {/* AI Panel (shown when enhancing) */}
       {enhanceMutation.isPending && (
         <div className="fixed bottom-4 right-4 bg-slate-800 border border-purple-500/30 rounded-xl p-4 shadow-xl flex items-center gap-3 animate-fade-in">
           <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
