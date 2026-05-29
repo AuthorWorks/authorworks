@@ -1,16 +1,16 @@
-name: Build and Push Images
+name: Build and Push Images (GHCR fallback)
 
-# Builds the three GHCR images consumed by the homelab cluster (frontend,
-# book-generator, content-worker). Each image is tagged `sha-<commit>` so
-# ArgoCD Image Updater can detect new builds and bump the kustomize image
-# overrides on the live Application via the ArgoCD API. `latest` is also
-# pushed for human reference.
+# EMERGENCY FALLBACK ONLY. Primary CI/CD is self-hosted Forgejo Actions
+# (.forgejo/workflows/homelab-build.yml) which builds the three images and
+# pushes them to the Forgejo registry (git.leopaska.xyz/leo/authorworks-*).
+# This GHCR workflow is manual-only (workflow_dispatch) so it neither
+# double-builds on the Forgejo runner (which also executes .github/workflows)
+# nor competes with the Forgejo registry as the source of truth.
 #
-# No SSH-based rollout step: ArgoCD + Image Updater own redeploys.
+# Builds the three GHCR images (frontend, book-generator, content-worker),
+# each tagged `sha-<commit>` + `latest`. No SSH rollout: ArgoCD owns redeploys.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 env:
