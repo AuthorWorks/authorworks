@@ -15,7 +15,8 @@ spec:
   project: homelab
 
   source:
-    repoURL: https://github.com/AuthorWorks/authorworks.git
+    # Self-hosted Forgejo is the canonical origin (GitHub is push-mirror backup).
+    repoURL: https://git.leopaska.xyz/leo/authorworks.git
     targetRevision: main
     path: k8s/argocd
 

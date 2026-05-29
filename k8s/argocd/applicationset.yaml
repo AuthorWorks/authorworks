@@ -18,13 +18,13 @@ spec:
         elements:
           - env: homelab
             cluster: https://kubernetes.default.svc
-            repoURL: https://github.com/AuthorWorks/authorworks.git
+            repoURL: https://git.leopaska.xyz/leo/authorworks.git
             targetRevision: main
             syncWave: "1"
           # Uncomment when production overlay is rebuilt:
           # - env: production
           #   cluster: https://kubernetes.default.svc
-          #   repoURL: https://github.com/AuthorWorks/authorworks.git
+          #   repoURL: https://git.leopaska.xyz/leo/authorworks.git
           #   targetRevision: main
           #   syncWave: "1"
 
@@ -40,26 +40,28 @@ spec:
         environment: '{{env}}'
       annotations:
         argocd.argoproj.io/sync-wave: '{{syncWave}}'
-        # ArgoCD Image Updater configuration. Tracks all three GHCR images,
-        # selecting the newest immutable sha-<commit> tag pushed by CI and
-        # writing the bump back via the ArgoCD API (Application.spec.source.kustomize.images).
+        # ArgoCD Image Updater configuration. Tracks all three self-hosted
+        # Forgejo registry images, selecting the newest immutable sha-<commit>
+        # tag pushed by Forgejo Actions (.forgejo/workflows/homelab-build.yml)
+        # and writing the bump back via the ArgoCD API
+        # (Application.spec.source.kustomize.images).
         argocd-image-updater.argoproj.io/image-list: >-
-          frontend=ghcr.io/authorworks/frontend,
-          book-generator=ghcr.io/authorworks/book-generator,
-          content-worker=ghcr.io/authorworks/content-worker
+          frontend=git.leopaska.xyz/leo/authorworks-frontend,
+          book-generator=git.leopaska.xyz/leo/authorworks-book-generator,
+          content-worker=git.leopaska.xyz/leo/authorworks-content-worker
         argocd-image-updater.argoproj.io/frontend.update-strategy: newest-build
         argocd-image-updater.argoproj.io/frontend.allow-tags: 'regexp:^sha-[0-9a-f]{7}$'
-        argocd-image-updater.argoproj.io/frontend.kustomize.image-name: ghcr.io/authorworks/frontend
+        argocd-image-updater.argoproj.io/frontend.kustomize.image-name: git.leopaska.xyz/leo/authorworks-frontend
         argocd-image-updater.argoproj.io/book-generator.update-strategy: newest-build
         argocd-image-updater.argoproj.io/book-generator.allow-tags: 'regexp:^sha-[0-9a-f]{7}$'
-        argocd-image-updater.argoproj.io/book-generator.kustomize.image-name: ghcr.io/authorworks/book-generator
+        argocd-image-updater.argoproj.io/book-generator.kustomize.image-name: git.leopaska.xyz/leo/authorworks-book-generator
         argocd-image-updater.argoproj.io/content-worker.update-strategy: newest-build
         argocd-image-updater.argoproj.io/content-worker.allow-tags: 'regexp:^sha-[0-9a-f]{7}$'
-        argocd-image-updater.argoproj.io/content-worker.kustomize.image-name: ghcr.io/authorworks/content-worker
+        argocd-image-updater.argoproj.io/content-worker.kustomize.image-name: git.leopaska.xyz/leo/authorworks-content-worker
         argocd-image-updater.argoproj.io/write-back-method: argocd
-        # GHCR is private; image-updater needs a pull secret to read the registry API.
-        # See docs/CLUSTER_PREREQS.md for the dockerconfigjson secret in argocd ns.
-        argocd-image-updater.argoproj.io/pull-secret: pullsecret:argocd/ghcr-credentials
+        # Forgejo registry is private; image-updater reads tags via the
+        # forgejo-registry-credentials pull secret in the argocd namespace.
+        argocd-image-updater.argoproj.io/pull-secret: pullsecret:argocd/forgejo-registry-credentials
     spec:
       project: homelab
 

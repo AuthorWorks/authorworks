@@ -7,6 +7,7 @@ resources:
   - ../../base-minimal
   - sealed-secrets.yaml
   - ghcr-sealed-secret.yaml
+  - forgejo-sealed-secret.yaml
   - content-worker.yaml
 
 labels:
@@ -17,12 +18,12 @@ labels:
 # The newTag fields below are bootstrap values pinned to the HEAD commit at the
 # time this overlay was last refreshed. Image Updater patches
 # `spec.source.kustomize.images` on the live Application whenever a newer
-# `sha-<commit>` tag appears in GHCR, so the values here drift only as the
-# repo bootstrap baseline.
+# `sha-<commit>` tag appears in the Forgejo registry, so the values here drift
+# only as the repo bootstrap baseline.
 images:
-  - name: ghcr.io/authorworks/frontend
-    newTag: sha-e4de8b6
-  - name: ghcr.io/authorworks/book-generator
-    newTag: sha-e4de8b6
-  - name: ghcr.io/authorworks/content-worker
-    newTag: sha-e4de8b6
+  - name: git.leopaska.xyz/leo/authorworks-frontend
+    newTag: sha-7e7fd34
+  - name: git.leopaska.xyz/leo/authorworks-book-generator
+    newTag: sha-7e7fd34
+  - name: git.leopaska.xyz/leo/authorworks-content-worker
+    newTag: sha-7e7fd34
