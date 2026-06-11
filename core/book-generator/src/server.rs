@@ -64,10 +64,13 @@ pub struct GenerateRequest {
     pub book_id: String,
     pub title: String,
     pub braindump: Option<String>,
+    pub description: Option<String>,
     pub genre: Option<String>,
     pub style: Option<String>,
     pub characters: Option<String>,
     pub synopsis: Option<String>,
+    /// Extra outline direction from the user (plot points, pacing, structure).
+    pub outline_prompt: Option<String>,
     pub chapter_count: Option<usize>,
     pub author_name: Option<String>,
     /// Bring-your-own inference: OpenAI-compatible API base URL. When set,
@@ -418,6 +421,29 @@ async fn run_generation(state: Arc<AppState>, job_id: String, request: GenerateR
 
     set_progress("braindump", "Processing creative ideas", 0.10).await;
 
+    // The outline prompt only sees title/braindump/genre/style/characters/synopsis,
+    // so fold the book description and any outline direction into the braindump.
+    // Without this the LLM can receive a bare title and refuse to outline.
+    let effective_braindump = {
+        let mut parts: Vec<&str> = Vec::new();
+        if let Some(b) = request.braindump.as_deref() {
+            if !b.trim().is_empty() {
+                parts.push(b);
+            }
+        }
+        if let Some(d) = request.description.as_deref() {
+            if !d.trim().is_empty() {
+                parts.push(d);
+            }
+        }
+        if let Some(o) = request.outline_prompt.as_deref() {
+            if !o.trim().is_empty() {
+                parts.push(o);
+            }
+        }
+        parts.join("\n\n")
+    };
+
     // Create metadata file with user-provided context
     let metadata_content = format!(
         r#"# Book Metadata
@@ -441,7 +467,7 @@ async fn run_generation(state: Arc<AppState>, job_id: String, request: GenerateR
 {}
 "#,
         request.title,
-        request.braindump.as_deref().unwrap_or(""),
+        effective_braindump,
         request.genre.as_deref().unwrap_or(""),
         request.style.as_deref().unwrap_or(""),
         request.characters.as_deref().unwrap_or(""),
@@ -621,10 +647,12 @@ mod tests {
             book_id: "test-book".to_string(),
             title: "Test".to_string(),
             braindump: None,
+            description: None,
             genre: None,
             style: None,
             characters: None,
             synopsis: None,
+            outline_prompt: None,
             chapter_count: None,
             author_name: None,
             llm_api_base: None,
