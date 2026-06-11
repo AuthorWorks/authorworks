@@ -159,6 +159,34 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
     (f) => f.endsWith('.epub') || f.endsWith('.pdf')
   )
 
+  // API auth is Bearer-only, so downloads go through fetch + blob instead of
+  // plain anchor links (which cannot carry the Authorization header).
+  const [downloadingFile, setDownloadingFile] = useState<string | null>(null)
+  const handleDownload = async (file: string) => {
+    setDownloadingFile(file)
+    try {
+      const response = await fetch(
+        `/api/books/${params.id}/export?file=${encodeURIComponent(file)}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      )
+      if (!response.ok) throw new Error('Download failed')
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = file
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Download failed:', error)
+      setGenerationError(`Failed to download ${file}`)
+    } finally {
+      setDownloadingFile(null)
+    }
+  }
+
   // Create chapter mutation
   const createChapterMutation = useMutation({
     mutationFn: async () => {
@@ -321,15 +349,19 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
           </h2>
           <div className="flex flex-wrap gap-3">
             {downloadableFiles.map((file) => (
-              <a
+              <button
                 key={file}
-                href={`/api/books/${params.id}/export?file=${encodeURIComponent(file)}`}
-                className="btn-primary py-2 px-4 inline-flex items-center gap-2"
-                download
+                onClick={() => handleDownload(file)}
+                disabled={downloadingFile !== null}
+                className="btn-primary py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50"
               >
-                <Download className="h-4 w-4" />
+                {downloadingFile === file ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
                 {file.endsWith('.epub') ? 'EPUB' : file.endsWith('.pdf') ? 'PDF' : file}
-              </a>
+              </button>
             ))}
           </div>
         </div>
