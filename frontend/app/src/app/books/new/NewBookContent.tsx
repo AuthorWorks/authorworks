@@ -81,74 +81,6 @@ export default function NewBookContent() {
     await new Promise(resolve => setTimeout(resolve, duration))
   }
 
-  // Map phase names from book generator to step indices
-  const phaseToStep: Record<string, number> = {
-    'setup': 0,
-    'braindump': 0,
-    'genre': 1,
-    'style': 2,
-    'characters': 3,
-    'synopsis': 4,
-    'outline': 5,
-    'chapters': 6,
-    'scenes': 7,
-    'content': 8,
-    'rendering': 8,
-    'export': 9,
-    'complete': 10,
-  }
-
-  // Poll job status until complete
-  const pollJobStatus = async (jobId: string, bookId: string): Promise<void> => {
-    let attempts = 0
-    const maxAttempts = 300 // 5 minutes max with 1s intervals
-
-    while (attempts < maxAttempts) {
-      try {
-        const response = await fetch(`/api/generate/book/status/${jobId}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-
-        if (!response.ok) {
-          throw new Error('Failed to get job status')
-        }
-
-        const status = await response.json()
-        console.log('Job status:', status)
-
-        // Update UI based on job status
-        const stepIndex = phaseToStep[status.phase] ?? currentStep
-        if (stepIndex !== currentStep) {
-          await advanceProgress(stepIndex, 0)
-        }
-        setStatusMessage(status.current_step)
-
-        if (status.status === 'completed') {
-          await advanceProgress(10, 500)
-          router.push(`/books/${bookId}`)
-          return
-        }
-
-        if (status.status === 'failed') {
-          throw new Error(status.error || 'Book generation failed')
-        }
-
-        if (status.status === 'cancelled') {
-          throw new Error('Book generation was cancelled')
-        }
-
-        // Wait before next poll
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        attempts++
-      } catch (error) {
-        console.error('Polling error:', error)
-        throw error
-      }
-    }
-
-    throw new Error('Book generation timed out')
-  }
-
   const createMutation = useMutation({
     mutationFn: async () => {
       setTotalSteps(creationSteps.length)
@@ -227,9 +159,10 @@ export default function NewBookContent() {
           const { job_id } = await generationResponse.json()
           console.log('Book generation started, job_id:', job_id)
 
-          // Poll for job status and update UI with real progress
-          // Note: pollJobStatus handles redirect on success
-          await pollJobStatus(job_id, data.id)
+          // Full generation takes a long time - hand off to the book page,
+          // which polls progress and surfaces chapters/downloads when done.
+          await advanceProgress(10, 500)
+          router.push(`/books/${data.id}`)
         } catch (error) {
           console.error('Generation error:', error)
           setErrorMessage(error instanceof Error ? error.message : 'Book generation failed')

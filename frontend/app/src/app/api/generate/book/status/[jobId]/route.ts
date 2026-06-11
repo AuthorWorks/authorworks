@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Pool } from 'pg'
+import { getUserId, unauthorized } from '@/app/lib/auth'
 import { countWords } from '@/app/lib/chapters'
 import { getPool } from '@/app/lib/db'
 import { getContentSchemaTables } from '@/app/lib/db-schema'
@@ -20,9 +21,12 @@ interface JobStatus {
 
 // GET /api/generate/book/status/:jobId - Polls the book generator and auto-syncs on completion.
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { jobId: string } }
 ) {
+  const userId = await getUserId(request)
+  if (!userId) return unauthorized()
+
   const generatorUrl = process.env.BOOK_GENERATOR_URL || DEFAULT_BOOK_GENERATOR_URL
   const pool = getPool()
 
@@ -49,14 +53,51 @@ export async function GET(
 
   const status = (await response.json()) as JobStatus
 
+  // Job statuses include full chapter content - only the book owner may read them.
+  if (status.book_id) {
+    const { booksTable, bookOwnerCol } = await getContentSchemaTables(pool)
+    const owned = await pool.query(
+      `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
+      [status.book_id, userId]
+    )
+    if (owned.rows.length === 0) {
+      return NextResponse.json({ error: 'Job not found' }, { status: 404 })
+    }
+  }
+
   if (status.status === 'completed' && status.book_id && !status.synced) {
     await autoSyncBook(pool, status.book_id, params.jobId, status)
     status.synced = true
   } else if (status.status === 'failed') {
     await markGenerationLogFailed(pool, params.jobId, status.error || 'Book generation failed')
+    if (status.book_id) {
+      await updateBookGenerationStatus(pool, status.book_id, {
+        generation_status: 'failed',
+        generation_error: status.error || 'Book generation failed',
+      })
+    }
   }
 
   return NextResponse.json(status)
+}
+
+async function updateBookGenerationStatus(
+  pool: Pool,
+  bookId: string,
+  patch: Record<string, unknown>
+) {
+  try {
+    const { booksTable } = await getContentSchemaTables(pool)
+    await pool.query(
+      `UPDATE ${booksTable} SET
+         metadata = COALESCE(metadata, '{}'::jsonb) || $1,
+         updated_at = NOW()
+       WHERE id = $2`,
+      [JSON.stringify(patch), bookId]
+    )
+  } catch (error) {
+    console.warn(`Failed to update generation status for book ${bookId}:`, error)
+  }
 }
 
 async function autoSyncBook(pool: Pool, bookId: string, jobId: string, status: JobStatus) {
@@ -80,6 +121,7 @@ async function autoSyncBook(pool: Pool, bookId: string, jobId: string, status: J
 
     const metadata: Record<string, unknown> = {
       generation_completed: true,
+      generation_status: 'completed',
       generation_job_id: jobId,
       completed_at: new Date().toISOString(),
     }

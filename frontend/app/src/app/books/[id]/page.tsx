@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
   ChevronRight,
+  Download,
   Edit3,
   FileText,
   Loader2,
@@ -38,6 +39,26 @@ interface Chapter {
   updated_at: string
 }
 
+interface GenerationStatus {
+  status: string
+  phase?: string
+  current_step?: string
+  progress?: number
+  error?: string
+  synced?: boolean
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  setup: 'Setting up',
+  outline: 'Outlining the book',
+  chapters: 'Drafting chapter outlines',
+  scenes: 'Building scenes',
+  content: 'Writing prose',
+  rendering: 'Rendering EPUB & PDF',
+  export: 'Exporting files',
+  complete: 'Complete',
+}
+
 export default function BookDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -45,6 +66,7 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
   const [showNewChapter, setShowNewChapter] = useState(false)
   const [newChapterTitle, setNewChapterTitle] = useState('')
   const [generationError, setGenerationError] = useState<string | null>(null)
+  const [activeJobId, setActiveJobId] = useState<string | null>(null)
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -78,6 +100,64 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
     },
     enabled: isAuthenticated && !!accessToken,
   })
+
+  // Resume polling for a generation that was started earlier (e.g. before a reload).
+  useEffect(() => {
+    if (!activeJobId && book?.metadata?.generation_status === 'running' && book?.metadata?.generation_job_id) {
+      setActiveJobId(book.metadata.generation_job_id)
+    }
+  }, [book, activeJobId])
+
+  // Poll generation progress; the status route auto-syncs chapters on completion.
+  const { data: jobStatus } = useQuery<GenerationStatus>({
+    queryKey: ['generation-status', activeJobId],
+    queryFn: async () => {
+      const response = await fetch(`/api/generate/book/status/${activeJobId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (!response.ok) throw new Error('Failed to fetch generation status')
+      return response.json()
+    },
+    enabled: isAuthenticated && !!accessToken && !!activeJobId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status === 'completed' || status === 'failed' || status === 'cancelled' ? false : 5000
+    },
+  })
+
+  useEffect(() => {
+    if (!jobStatus) return
+    if (jobStatus.status === 'completed') {
+      setActiveJobId(null)
+      queryClient.invalidateQueries({ queryKey: ['book', params.id] })
+      queryClient.invalidateQueries({ queryKey: ['chapters', params.id] })
+      queryClient.invalidateQueries({ queryKey: ['exports', params.id] })
+    } else if (jobStatus.status === 'failed') {
+      setActiveJobId(null)
+      setGenerationError(jobStatus.error || 'Book generation failed')
+      queryClient.invalidateQueries({ queryKey: ['book', params.id] })
+    }
+  }, [jobStatus, params.id, queryClient])
+
+  const isGenerating =
+    !!activeJobId && jobStatus?.status !== 'completed' && jobStatus?.status !== 'failed'
+
+  // Downloadable artifacts (EPUB/PDF) once a generation has completed.
+  const { data: exportsData } = useQuery<{ files: string[] }>({
+    queryKey: ['exports', params.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/books/${params.id}/export`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (!response.ok) return { files: [] }
+      return response.json()
+    },
+    enabled:
+      isAuthenticated && !!accessToken && !!book?.metadata?.generation_completed,
+  })
+  const downloadableFiles = (exportsData?.files || []).filter(
+    (f) => f.endsWith('.epub') || f.endsWith('.pdf')
+  )
 
   // Create chapter mutation
   const createChapterMutation = useMutation({
@@ -130,11 +210,8 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
     },
     onSuccess: (data) => {
       console.log('Generation started:', data)
-      // Refresh chapters after a delay to see new content
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['chapters', params.id] })
-        queryClient.invalidateQueries({ queryKey: ['book', params.id] })
-      }, 2000)
+      if (data.job_id) setActiveJobId(data.job_id)
+      queryClient.invalidateQueries({ queryKey: ['book', params.id] })
     },
     onError: (error: Error) => {
       setGenerationError(error.message)
@@ -219,6 +296,44 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
           </div>
         </div>
       </div>
+
+      {/* Generation Progress */}
+      {isGenerating && (
+        <div className="mb-6 p-4 bg-indigo-900/30 border border-indigo-700 rounded-lg flex items-center gap-4">
+          <Loader2 className="h-6 w-6 text-indigo-400 animate-spin shrink-0" />
+          <div>
+            <p className="font-medium text-indigo-200">
+              {PHASE_LABELS[jobStatus?.phase || ''] || 'Generating your book'}...
+            </p>
+            <p className="text-sm text-indigo-300/70">
+              {jobStatus?.current_step || 'The AI is writing. This can take a while - feel free to come back later.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Downloads */}
+      {downloadableFiles.length > 0 && (
+        <div className="card mb-6">
+          <h2 className="text-xl font-semibold flex items-center gap-2 mb-4">
+            <Download className="h-5 w-5 text-emerald-400" />
+            Download Your Book
+          </h2>
+          <div className="flex flex-wrap gap-3">
+            {downloadableFiles.map((file) => (
+              <a
+                key={file}
+                href={`/api/books/${params.id}/export?file=${encodeURIComponent(file)}`}
+                className="btn-primary py-2 px-4 inline-flex items-center gap-2"
+                download
+              >
+                <Download className="h-4 w-4" />
+                {file.endsWith('.epub') ? 'EPUB' : file.endsWith('.pdf') ? 'PDF' : file}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Chapters Section */}
       <div className="card mb-6">
@@ -328,20 +443,20 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
       <div className="grid grid-cols-2 gap-4">
         <button
           onClick={() => continueWritingMutation.mutate()}
-          disabled={continueWritingMutation.isPending}
+          disabled={continueWritingMutation.isPending || isGenerating}
           className="card flex items-center gap-3 hover:bg-slate-800/70 transition-colors disabled:opacity-50"
         >
-          {continueWritingMutation.isPending ? (
+          {continueWritingMutation.isPending || isGenerating ? (
             <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
           ) : (
             <Edit3 className="h-8 w-8 text-emerald-400" />
           )}
           <div className="text-left">
             <h3 className="font-medium">
-              {continueWritingMutation.isPending ? 'Generating...' : 'Continue Writing'}
+              {continueWritingMutation.isPending || isGenerating ? 'Generating...' : 'Continue Writing'}
             </h3>
             <p className="text-sm text-slate-500">
-              {continueWritingMutation.isPending
+              {continueWritingMutation.isPending || isGenerating
                 ? 'AI is creating content'
                 : 'Generate content with AI'}
             </p>
