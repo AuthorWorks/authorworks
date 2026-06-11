@@ -4,6 +4,7 @@ import { getUserId, unauthorized } from '@/app/lib/auth'
 import { countWords } from '@/app/lib/chapters'
 import { getPool } from '@/app/lib/db'
 import { getContentSchemaTables } from '@/app/lib/db-schema'
+import { getUserAiOverride } from '@/app/lib/user-ai'
 
 interface OutlineRequest {
   book_id: string
@@ -87,7 +88,8 @@ Generate a compelling, well-paced outline with ${chapter_count} chapters. Each c
 
   let completion
   try {
-    completion = await chatCompletion(SYSTEM_PROMPT, userPrompt, { maxTokens: 8000 })
+    const override = await getUserAiOverride(pool, userId)
+    completion = await chatCompletion(SYSTEM_PROMPT, userPrompt, { maxTokens: 8000, override })
   } catch (error) {
     const message = error instanceof AiError ? error.message : String(error)
     await pool.query(

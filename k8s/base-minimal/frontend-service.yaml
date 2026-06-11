@@ -69,6 +69,12 @@ spec:
         # Server-side env vars for API routes (use internal cluster URL)
         - name: LOGTO_ENDPOINT
           value: "http://logto.security.svc.cluster.local:3001"
+        # Runtime OIDC config served to the browser via /api/auth/config
+        # (NEXT_PUBLIC_* values are baked at build time and unreliable here)
+        - name: LOGTO_PUBLIC_ENDPOINT
+          value: "https://auth.leopaska.xyz"
+        - name: LOGTO_REDIRECT_URI
+          value: "https://author.works/callback"
         - name: LOGTO_APP_ID
           valueFrom:
             secretKeyRef:
@@ -105,6 +111,13 @@ spec:
             secretKeyRef:
               name: authorworks-secrets
               key: anthropic-api-key
+              optional: true
+        # Encrypts user-supplied BYO-inference API keys at rest (AES-256-GCM).
+        - name: AI_KEY_ENCRYPTION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: authorworks-secrets
+              key: ai-key-encryption-secret
               optional: true
         # Book generator service URL
         - name: BOOK_GENERATOR_URL

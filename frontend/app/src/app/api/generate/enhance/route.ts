@@ -3,6 +3,7 @@ import { AiError, chatCompletion } from '@/app/lib/ai'
 import { getUserId, unauthorized } from '@/app/lib/auth'
 import { findChapterForUser } from '@/app/lib/chapters'
 import { getPool } from '@/app/lib/db'
+import { getUserAiOverride } from '@/app/lib/user-ai'
 
 const ENHANCEMENT_PROMPTS: Record<string, { system: string; user: (text: string) => string }> = {
   improve: {
@@ -82,9 +83,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const override = await getUserAiOverride(getPool(), userId)
     const completion = await chatCompletion(promptPair.system, promptPair.user(text), {
       maxTokens: body.max_tokens ?? 4000,
       temperature: 0.7,
+      override,
     })
     return NextResponse.json({
       mode,

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { User, CreditCard, Bell, Shield, Moon, Sun, Save, Loader2 } from 'lucide-react'
+import { User, CreditCard, Bell, Shield, Save, Loader2, Cpu } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -15,6 +15,13 @@ export default function SettingsPage() {
   const [name, setName] = useState('')
   const [bio, setBio] = useState('')
   const [website, setWebsite] = useState('')
+
+  // AI provider (bring-your-own inference) state
+  const [aiProvider, setAiProvider] = useState<'default' | 'openai-compatible'>('default')
+  const [aiBaseUrl, setAiBaseUrl] = useState('')
+  const [aiModel, setAiModel] = useState('')
+  const [aiApiKey, setAiApiKey] = useState('')
+  const [aiError, setAiError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -47,6 +54,59 @@ export default function SettingsPage() {
       setWebsite(profile.website || '')
     }
   }, [profile])
+
+  // Fetch AI provider settings
+  const { data: aiSettings } = useQuery({
+    queryKey: ['ai-settings'],
+    queryFn: async () => {
+      const response = await fetch('/api/users/ai-settings', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (!response.ok) return null
+      return response.json()
+    },
+    enabled: isAuthenticated,
+  })
+
+  useEffect(() => {
+    if (aiSettings) {
+      setAiProvider(aiSettings.provider === 'openai-compatible' ? 'openai-compatible' : 'default')
+      setAiBaseUrl(aiSettings.baseUrl || '')
+      setAiModel(aiSettings.model || '')
+    }
+  }, [aiSettings])
+
+  // Save AI provider settings
+  const updateAiSettingsMutation = useMutation({
+    mutationFn: async () => {
+      setAiError(null)
+      const payload =
+        aiProvider === 'default'
+          ? { provider: 'default' }
+          : {
+              provider: 'openai-compatible',
+              base_url: aiBaseUrl.trim(),
+              model: aiModel.trim(),
+              ...(aiApiKey ? { api_key: aiApiKey } : {}),
+            }
+      const response = await fetch('/api/users/ai-settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(payload),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to save AI settings')
+      return data
+    },
+    onSuccess: () => {
+      setAiApiKey('')
+      queryClient.invalidateQueries({ queryKey: ['ai-settings'] })
+    },
+    onError: (error: Error) => setAiError(error.message),
+  })
 
   // Fetch subscription
   const { data: subscription } = useQuery({
@@ -92,6 +152,7 @@ export default function SettingsPage() {
 
   const tabs = [
     { id: 'profile', name: 'Profile', icon: User },
+    { id: 'ai', name: 'AI Provider', icon: Cpu },
     { id: 'billing', name: 'Billing', icon: CreditCard },
     { id: 'notifications', name: 'Notifications', icon: Bell },
     { id: 'security', name: 'Security', icon: Shield },
@@ -195,6 +256,125 @@ export default function SettingsPage() {
                   <>
                     <Save className="h-4 w-4 mr-2" />
                     Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'ai' && (
+            <div className="card space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold">AI Provider</h2>
+                <p className="text-slate-400 text-sm mt-1">
+                  Choose how your books are generated. Use the built-in AuthorWorks inference,
+                  or bring your own API key and OpenAI-compatible endpoint
+                  (OpenAI, Anthropic, OpenRouter, your own vLLM/Ollama server, ...).
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 p-4 rounded-lg border border-slate-700 cursor-pointer hover:border-indigo-500/50 transition-colors">
+                  <input
+                    type="radio"
+                    name="ai-provider"
+                    checked={aiProvider === 'default'}
+                    onChange={() => setAiProvider('default')}
+                    className="mt-1"
+                  />
+                  <div>
+                    <h3 className="font-medium text-white">AuthorWorks inference (default)</h3>
+                    <p className="text-slate-500 text-sm">
+                      Generation runs on the AuthorWorks platform. No setup required.
+                    </p>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-4 rounded-lg border border-slate-700 cursor-pointer hover:border-indigo-500/50 transition-colors">
+                  <input
+                    type="radio"
+                    name="ai-provider"
+                    checked={aiProvider === 'openai-compatible'}
+                    onChange={() => setAiProvider('openai-compatible')}
+                    className="mt-1"
+                  />
+                  <div>
+                    <h3 className="font-medium text-white">Bring your own inference</h3>
+                    <p className="text-slate-500 text-sm">
+                      Use your own API key or self-hosted OpenAI-compatible endpoint.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {aiProvider === 'openai-compatible' && (
+                <div className="space-y-4 pl-1">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      API Base URL
+                    </label>
+                    <input
+                      type="url"
+                      value={aiBaseUrl}
+                      onChange={(e) => setAiBaseUrl(e.target.value)}
+                      className="input"
+                      placeholder="https://api.openai.com/v1"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Model
+                    </label>
+                    <input
+                      type="text"
+                      value={aiModel}
+                      onChange={(e) => setAiModel(e.target.value)}
+                      className="input"
+                      placeholder="gpt-4o"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={aiApiKey}
+                      onChange={(e) => setAiApiKey(e.target.value)}
+                      className="input"
+                      placeholder={aiSettings?.hasApiKey ? '•••••••• (saved — leave blank to keep)' : 'sk-...'}
+                      autoComplete="off"
+                    />
+                    <p className="text-slate-500 text-sm mt-1">
+                      Stored encrypted. Leave blank for endpoints that do not require a key.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {aiError && (
+                <p className="text-red-400 text-sm">{aiError}</p>
+              )}
+
+              <button
+                onClick={() => updateAiSettingsMutation.mutate()}
+                disabled={
+                  updateAiSettingsMutation.isPending ||
+                  (aiProvider === 'openai-compatible' && (!aiBaseUrl.trim() || !aiModel.trim()))
+                }
+                className="btn-primary"
+              >
+                {updateAiSettingsMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save AI Settings
                   </>
                 )}
               </button>

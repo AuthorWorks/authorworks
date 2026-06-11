@@ -29,10 +29,20 @@ export interface ChatCompletionResult {
   provider: AiProvider
 }
 
-interface ProviderConfig {
+export interface ProviderConfig {
   provider: AiProvider
   model: string
   baseUrl: string
+  apiKey?: string
+}
+
+/**
+ * Per-user bring-your-own-inference override. Any OpenAI-compatible endpoint
+ * (OpenAI, Anthropic's compat layer, LiteLLM, vLLM, Ollama, OpenRouter, ...).
+ */
+export interface AiOverride {
+  baseUrl: string
+  model: string
   apiKey?: string
 }
 
@@ -78,12 +88,24 @@ export function getAiConfig(): ProviderConfig {
   }
 }
 
+export function resolveAiConfig(override?: AiOverride | null): ProviderConfig {
+  if (override) {
+    return {
+      provider: 'openai',
+      model: override.model,
+      baseUrl: stripTrailingSlash(override.baseUrl),
+      apiKey: override.apiKey,
+    }
+  }
+  return getAiConfig()
+}
+
 export async function chatCompletion(
   systemPrompt: string,
   userPrompt: string,
-  options: { maxTokens?: number; temperature?: number } = {}
+  options: { maxTokens?: number; temperature?: number; override?: AiOverride | null } = {}
 ): Promise<ChatCompletionResult> {
-  const config = getAiConfig()
+  const config = resolveAiConfig(options.override)
   const maxTokens = options.maxTokens ?? 8000
   const temperature = options.temperature ?? 0.7
 

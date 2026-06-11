@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserId, unauthorized } from '@/app/lib/auth'
 import { getPool } from '@/app/lib/db'
+import { getUserAiOverride } from '@/app/lib/user-ai'
 
 const DEFAULT_BOOK_GENERATOR_URL =
   'http://authorworks-book-generator.authorworks.svc.cluster.local:8081'
@@ -34,6 +35,11 @@ export async function POST(request: NextRequest) {
   }
 
   const generatorUrl = process.env.BOOK_GENERATOR_URL || DEFAULT_BOOK_GENERATOR_URL
+
+  // Bring-your-own inference: forward the user's OpenAI-compatible endpoint to
+  // the generator. Null override means the platform default (internal LiteLLM).
+  const override = await getUserAiOverride(getPool(), userId)
+
   let generatorResponse: Response
   try {
     generatorResponse = await fetch(`${generatorUrl}/api/generate`, {
@@ -51,6 +57,13 @@ export async function POST(request: NextRequest) {
         outline_prompt: body.outline_prompt ?? '',
         chapter_count: body.chapter_count ?? 12,
         author_name: body.author_name ?? 'AuthorWorks User',
+        ...(override
+          ? {
+              llm_api_base: override.baseUrl,
+              llm_model: override.model,
+              llm_api_key: override.apiKey ?? '',
+            }
+          : {}),
       }),
     })
   } catch (error) {
