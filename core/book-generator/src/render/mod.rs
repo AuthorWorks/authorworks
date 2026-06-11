@@ -240,9 +240,11 @@ pub fn generate_pdf_and_epub(output_dir: &Path, book_title: &str, author: &str) 
     full_content.push_str("papersize: a5\n");
     full_content.push_str("geometry: margin=1in\n");
     full_content.push_str("fontsize: 11pt\n");
-    full_content.push_str("mainfont: Palatino\n");
-    full_content.push_str("sansfont: Helvetica\n");
-    full_content.push_str("monofont: Courier\n");
+    // Liberation fonts ship in the runtime image; Palatino/Helvetica do not
+    // exist there and abort xelatex via fontspec.
+    full_content.push_str("mainfont: Liberation Serif\n");
+    full_content.push_str("sansfont: Liberation Sans\n");
+    full_content.push_str("monofont: Liberation Mono\n");
     full_content.push_str("linkcolor: black\n");
     full_content.push_str("urlcolor: black\n");
     full_content.push_str("toc-title: Contents\n");
@@ -619,9 +621,9 @@ div.copyright-page p {
         "--variable=papersize:a5",
         "--variable=fontsize:11pt",
         "--variable=geometry:margin=1in",
-        "--variable=mainfont:Palatino",
-        "--variable=sansfont:Helvetica",
-        "--variable=monofont:Courier",
+        "--variable=mainfont:Liberation Serif",
+        "--variable=sansfont:Liberation Sans",
+        "--variable=monofont:Liberation Mono",
         "--variable=linkcolor:black",
         "--variable=urlcolor:black",
         "--variable=toc-title:Contents",
@@ -680,7 +682,9 @@ div.copyright-page p {
         "--metadata=lang:en-US".to_string(),
         "--metadata=rights:Copyright © 2025".to_string(),
         "--css=epub.css".to_string(),              // Specify the CSS file for styling
-        "--split-level=1".to_string(),             // Replace deprecated --epub-chapter-level with --split-level
+        // Note: chapters split at level-1 headings by default. `--split-level`
+        // only exists in pandoc >= 3.0 and aborts pandoc 2.x (Debian bookworm),
+        // so the flag is intentionally omitted.
         "--no-highlight".to_string(),              // Disable code highlighting for fiction
     ];
     

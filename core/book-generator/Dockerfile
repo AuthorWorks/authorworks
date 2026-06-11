@@ -30,7 +30,8 @@ RUN cargo build --release --bin book-generator-server
 # Runtime stage
 FROM debian:bookworm-slim
 
-# Install runtime dependencies including pandoc and texlive for PDF/EPUB generation
+# Install runtime dependencies including pandoc and texlive for PDF/EPUB generation.
+# librsvg2-bin provides rsvg-convert for SVG cover -> PNG conversion.
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
@@ -40,6 +41,7 @@ RUN apt-get update && apt-get install -y \
     texlive-fonts-extra \
     fonts-liberation \
     fonts-dejavu \
+    librsvg2-bin \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
