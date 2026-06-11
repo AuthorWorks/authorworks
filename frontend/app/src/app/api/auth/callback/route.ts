@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getLogtoEndpoint } from '@/app/lib/auth'
+import { getLogtoEndpoint, toClientUser, type LogtoUserInfo } from '@/app/lib/auth'
 
 /**
  * POST /api/auth/callback
  *
  * Server-side leg of the Logto PKCE flow:
  *  1. Exchange the auth code + verifier for tokens at Logto.
- *  2. Best-effort sync of the resulting user to a downstream user-service when configured.
+ *  2. Resolve the user via /oidc/me so the client gets a ready-to-use session.
+ *  3. Best-effort sync of the resulting user to a downstream user-service when configured.
  *
- * Returns the upstream Logto token response unchanged (access_token, refresh_token, ...).
+ * Returns { accessToken, refreshToken, expiresIn, user } — the contract the
+ * client AuthProvider consumes.
  */
 export async function POST(request: NextRequest) {
   let body: { code?: string; codeVerifier?: string; redirectUri?: string }
@@ -23,9 +25,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
   }
 
-  const clientId = process.env.LOGTO_CLIENT_ID || process.env.NEXT_PUBLIC_LOGTO_CLIENT_ID
+  const clientId =
+    process.env.LOGTO_APP_ID ||
+    process.env.LOGTO_CLIENT_ID ||
+    process.env.NEXT_PUBLIC_LOGTO_APP_ID ||
+    process.env.NEXT_PUBLIC_LOGTO_CLIENT_ID
   if (!clientId) {
-    return NextResponse.json({ error: 'LOGTO_CLIENT_ID is not configured' }, { status: 500 })
+    return NextResponse.json({ error: 'Logto app id is not configured' }, { status: 500 })
   }
 
   try {
@@ -50,11 +56,28 @@ export async function POST(request: NextRequest) {
     }
 
     const tokens = await tokenResponse.json()
+    if (!tokens.access_token) {
+      return NextResponse.json({ error: 'Token exchange returned no access token' }, { status: 502 })
+    }
+
+    // Resolve the user so the client can hydrate its session in one round trip.
+    let user = null
+    try {
+      const userResponse = await fetch(`${getLogtoEndpoint()}/oidc/me`, {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+        cache: 'no-store',
+      })
+      if (userResponse.ok) {
+        user = toClientUser((await userResponse.json()) as LogtoUserInfo)
+      }
+    } catch (error) {
+      console.warn('Userinfo fetch failed during callback:', error)
+    }
 
     // Optional downstream user-sync. Failure here is non-blocking: the user is still
     // authenticated and the JWT is the source of truth for the rest of the app.
     const userServiceUrl = process.env.USER_SERVICE_URL
-    if (userServiceUrl && tokens.access_token) {
+    if (userServiceUrl) {
       try {
         await fetch(`${userServiceUrl}/auth/sync`, {
           method: 'POST',
@@ -69,7 +92,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(tokens)
+    return NextResponse.json({
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token ?? null,
+      expiresIn: tokens.expires_in ?? null,
+      user,
+    })
   } catch (error) {
     console.error('Logto callback failed:', error)
     return NextResponse.json({ error: 'Authentication callback failed' }, { status: 500 })

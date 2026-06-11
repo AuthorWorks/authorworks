@@ -14,6 +14,46 @@ export interface LogtoUserInfo {
   picture?: string
 }
 
+/** User shape consumed by the client AuthProvider. */
+export interface ClientUser {
+  id: string
+  name: string
+  email: string
+  avatar?: string
+}
+
+export function toClientUser(info: LogtoUserInfo): ClientUser {
+  return {
+    id: info.sub,
+    name: info.name || info.username || info.email || 'Author',
+    email: info.email || '',
+    avatar: info.picture,
+  }
+}
+
+/**
+ * Public OIDC config served to the browser at runtime. Reads plain (non
+ * NEXT_PUBLIC) env vars first so values can be set per-deployment without
+ * rebuilding the image; NEXT_PUBLIC_* build-time values remain the fallback
+ * for local dev.
+ */
+export function getPublicAuthConfig() {
+  return {
+    endpoint:
+      process.env.LOGTO_PUBLIC_ENDPOINT ||
+      process.env.NEXT_PUBLIC_LOGTO_ENDPOINT ||
+      'http://localhost:3002',
+    appId:
+      process.env.LOGTO_APP_ID ||
+      process.env.NEXT_PUBLIC_LOGTO_APP_ID ||
+      '',
+    redirectUri:
+      process.env.LOGTO_REDIRECT_URI ||
+      process.env.NEXT_PUBLIC_REDIRECT_URI ||
+      'http://localhost:3001/callback',
+  }
+}
+
 /**
  * Resolves the Logto user info for a Bearer-authenticated request.
  * Returns `null` when the token is missing, malformed, or rejected by Logto.

@@ -26,10 +26,38 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Logto configuration
-const LOGTO_ENDPOINT = process.env.NEXT_PUBLIC_LOGTO_ENDPOINT || 'http://localhost:3002';
-const LOGTO_APP_ID = process.env.NEXT_PUBLIC_LOGTO_APP_ID || '';
-const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || 'http://localhost:3001/callback';
+// Build-time fallbacks for local dev; production values come from /api/auth/config
+// at runtime so images don't need env-specific rebuilds.
+const FALLBACK_AUTH_CONFIG: AuthConfig = {
+  endpoint: process.env.NEXT_PUBLIC_LOGTO_ENDPOINT || 'http://localhost:3002',
+  appId: process.env.NEXT_PUBLIC_LOGTO_APP_ID || '',
+  redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI || 'http://localhost:3001/callback',
+};
+
+interface AuthConfig {
+  endpoint: string;
+  appId: string;
+  redirectUri: string;
+}
+
+let cachedAuthConfig: AuthConfig | null = null;
+
+async function getAuthConfig(): Promise<AuthConfig> {
+  if (cachedAuthConfig) return cachedAuthConfig;
+  try {
+    const response = await fetch('/api/auth/config');
+    if (response.ok) {
+      const config = (await response.json()) as AuthConfig;
+      if (config.endpoint && config.appId) {
+        cachedAuthConfig = config;
+        return config;
+      }
+    }
+  } catch {
+    // fall through to build-time values
+  }
+  return FALLBACK_AUTH_CONFIG;
+}
 
 // PKCE helpers
 async function generateCodeChallenge(verifier: string): Promise<string> {
@@ -95,9 +123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        const user = await response.json();
+        const data = await response.json();
         setAuthState({
-          user,
+          user: data.user ?? data,
           isAuthenticated: true,
           isLoading: false,
           accessToken: token,
@@ -116,6 +144,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const initiateAuth = useCallback(async (isSignUp: boolean = false) => {
+    const config = await getAuthConfig();
+
     // Clear any stale tokens before starting new auth flow
     localStorage.removeItem('accessToken');
     localStorage.removeItem('oauth_state');
@@ -134,8 +164,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Build authorization URL
     const params = new URLSearchParams({
-      client_id: LOGTO_APP_ID,
-      redirect_uri: REDIRECT_URI,
+      client_id: config.appId,
+      redirect_uri: config.redirectUri,
       response_type: 'code',
       scope: 'openid profile email offline_access',
       state,
@@ -148,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       params.set('first_screen', 'register');
     }
 
-    window.location.href = `${LOGTO_ENDPOINT}/oidc/auth?${params.toString()}`;
+    window.location.href = `${config.endpoint}/oidc/auth?${params.toString()}`;
   }, []);
 
   const login = useCallback(() => {
@@ -172,6 +202,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Missing code verifier');
       }
 
+      const config = await getAuthConfig();
+
       // Exchange code for tokens
       const response = await fetch('/api/auth/callback', {
         method: 'POST',
@@ -181,7 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({
           code,
           codeVerifier,
-          redirectUri: REDIRECT_URI,
+          redirectUri: config.redirectUri,
         }),
       });
 
@@ -191,6 +223,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const { accessToken, user } = await response.json();
+      if (!accessToken) {
+        throw new Error('Token exchange returned no access token');
+      }
 
       // Store token
       localStorage.setItem('accessToken', accessToken);
@@ -198,7 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('code_verifier');
 
       setAuthState({
-        user,
+        user: user ?? null,
         isAuthenticated: true,
         isLoading: false,
         accessToken,
@@ -210,6 +245,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    const config = await getAuthConfig();
+
     // Clear local auth state first
     localStorage.removeItem('accessToken');
     localStorage.removeItem('oauth_state');
@@ -225,8 +262,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Redirect to Logto's end session endpoint to clear the IdP session
     // This ensures the user can log in as a different user next time
     const postLogoutRedirectUri = typeof window !== 'undefined' ? window.location.origin : '';
-    const endSessionUrl = new URL(`${LOGTO_ENDPOINT}/oidc/session/end`);
-    endSessionUrl.searchParams.set('client_id', LOGTO_APP_ID);
+    const endSessionUrl = new URL(`${config.endpoint}/oidc/session/end`);
+    endSessionUrl.searchParams.set('client_id', config.appId);
     endSessionUrl.searchParams.set('post_logout_redirect_uri', postLogoutRedirectUri);
 
     window.location.href = endSessionUrl.toString();
