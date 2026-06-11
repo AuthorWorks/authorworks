@@ -58,7 +58,7 @@ spec:
           value: "http://authorworks-api-gateway.authorworks.svc.cluster.local:8080"
         # Client-side env vars (NEXT_PUBLIC_ prefix)
         - name: NEXT_PUBLIC_LOGTO_ENDPOINT
-          value: "https://auth.leopaska.xyz"
+          value: "https://logto.leopaska.xyz"
         - name: NEXT_PUBLIC_LOGTO_APP_ID
           valueFrom:
             secretKeyRef:
@@ -72,7 +72,7 @@ spec:
         # Runtime OIDC config served to the browser via /api/auth/config
         # (NEXT_PUBLIC_* values are baked at build time and unreliable here)
         - name: LOGTO_PUBLIC_ENDPOINT
-          value: "https://auth.leopaska.xyz"
+          value: "https://logto.leopaska.xyz"
         - name: LOGTO_REDIRECT_URI
           value: "https://author.works/callback"
         - name: LOGTO_APP_ID
