@@ -24,7 +24,41 @@ env:
   REGISTRY_INTERNAL: forgejo-http.forgejo.svc.cluster.local:3000
 
 jobs:
+  # Test gate: image builds only run when unit tests and type checks pass.
+  test-rust:
+    runs-on: docker
+    container: rust:1-bookworm
+    steps:
+      - name: Run book-generator unit tests
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
+            "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" repo
+          cd repo/core/book-generator
+          # Explicit native target: the workspace .cargo/config.toml defaults
+          # to wasm32-wasi for the legacy Spin services.
+          cargo test --bin book-generator-server --target x86_64-unknown-linux-gnu
+
+  test-frontend:
+    runs-on: docker
+    container: node:20-alpine
+    steps:
+      - name: Type-check the Next.js app
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          apk add --no-cache git
+          git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
+            "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" repo
+          cd repo/frontend/app
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit
+
   build-and-push:
+    needs: [test-rust, test-frontend]
     runs-on: docker
     strategy:
       # One image at a time: the runner pool shares a single DinD sidecar,

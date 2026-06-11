@@ -147,17 +147,38 @@ during local development; the deploy script forwards values from the root
 | `LOGTO_ENDPOINT` / `LOGTO_APP_ID` / `LOGTO_APP_SECRET` | Logto credentials |
 | `LOGTO_REDIRECT_URI` | Callback URL registered in Logto |
 | `NEXT_PUBLIC_APP_URL` | Public URL of the Next.js app |
-| `AI_PROVIDER` (`anthropic` \| `ollama`) | Default AI backend |
-| `ANTHROPIC_API_KEY`, `OLLAMA_URL`, `OLLAMA_MODEL` | Provider-specific |
+| `AI_PROVIDER` (`litellm` \| `anthropic` \| `ollama`) | Platform-default AI backend (default `litellm`) |
+| `AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY` | OpenAI-compatible gateway settings |
+| `ANTHROPIC_API_KEY`, `OLLAMA_BASE_URL` | Provider-specific overrides |
+| `AI_KEY_ENCRYPTION_SECRET` | Encrypts user BYO API keys at rest (required to enable BYOK) |
+| `AI_ALLOW_PRIVATE_ENDPOINTS` | `true` permits private/cluster-internal BYO endpoints (self-hosted single-tenant only) |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Optional billing |
 | `SUBSCRIPTION_SERVICE_URL` | Optional external billing proxy |
+
+### Bring your own inference (BYOK)
+
+Each user can switch between the platform default (internal LiteLLM gateway)
+and their own OpenAI-compatible endpoint under **Settings → AI Provider**
+(base URL + model + optional API key; works with OpenAI, Anthropic's
+compatibility endpoint, OpenRouter, vLLM, Ollama, ...). Keys are stored
+AES-256-GCM-encrypted (`user_ai_settings.api_key_encrypted`) and the override
+is applied to outline/enhance calls and full-book generation. User-supplied
+endpoints are validated against private/cluster-internal address ranges
+unless `AI_ALLOW_PRIVATE_ENDPOINTS=true`.
 
 ## Deployment
 
 Local + EC2 use Docker Compose. The homelab cluster (k3s) is fully GitOps
-via ArgoCD + Image Updater: CI publishes `sha-<commit>` images to GHCR,
-Image Updater bumps the kustomize image override on the live Application,
-ArgoCD redeploys. No manual `kubectl rollout restart`.
+via ArgoCD + Image Updater: Forgejo Actions (`.forgejo/workflows/homelab-build.yml`)
+runs the test gate and publishes `sha-<commit>` images to
+`git.leopaska.xyz/leo/authorworks-*`, Image Updater bumps the kustomize image
+override on the live Application, ArgoCD redeploys. No manual
+`kubectl rollout restart`. GitHub Actions (GHCR) remains a manual-only
+emergency fallback.
+
+Database schema is versioned in [`scripts/schema.sql`](./scripts/schema.sql)
+plus incremental [`scripts/migrations/`](./scripts/migrations) (currently 001–003);
+apply with `psql "$DATABASE_URL" -f <file>`.
 
 **Homelab quick path:**
 

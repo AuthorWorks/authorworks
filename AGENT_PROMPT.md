@@ -1,5 +1,11 @@
 # AuthorWorks - Agent Task Prompt
 
+> **HISTORICAL DOCUMENT — DO NOT USE FOR CURRENT WORK.**
+> This describes the January 2025 Spin/Leptos/Authelia architecture, which has
+> been superseded by the v1 stack (Next.js + Logto + PostgreSQL + Rust
+> book-generator on k3s via ArgoCD/Forgejo). See `README.md` for the current
+> architecture and deployment flow.
+
 **Version:** 1.1
 **Updated:** January 2025
 **Status:** Infrastructure Complete - Application Implementation Pending
