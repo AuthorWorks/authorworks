@@ -1,0 +1,7 @@
+# Native build cargo config (Docker only). Copied to /app/.cargo/config.toml.
+# Registers the private Forgejo cargo registry that serves homelab-inference.
+[registries.forgejo]
+index = "sparse+https://git.leopaska.xyz/api/packages/leo/cargo/"
+
+[registry]
+global-credential-providers = ["cargo:token"]

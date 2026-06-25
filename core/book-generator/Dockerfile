@@ -9,6 +9,12 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Cargo config for the private Forgejo cargo registry (serves homelab-inference).
+# Token via build-arg; multi-stage keeps it out of the final image.
+COPY cargo-config.docker.toml /app/.cargo/config.toml
+ARG FORGEJO_CARGO_TOKEN=""
+ENV CARGO_REGISTRIES_FORGEJO_TOKEN="Bearer ${FORGEJO_CARGO_TOKEN}"
+
 # Copy manifests
 COPY Cargo.toml Cargo.lock* ./
 

@@ -15,3 +15,9 @@ RUST_LOG = "info"
 
 [registries]
 crates-io = { index = "https://github.com/rust-lang/crates.io-index" }
+# Private Forgejo cargo registry serving homelab-inference (book-generator dep).
+# Auth via the CARGO_REGISTRIES_FORGEJO_TOKEN env var (Bearer <token>).
+forgejo = { index = "sparse+https://git.leopaska.xyz/api/packages/leo/cargo/" }
+
+[registry]
+global-credential-providers = ["cargo:token"]

@@ -32,6 +32,9 @@ jobs:
       - name: Run book-generator unit tests
         env:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Auth for the Forgejo cargo registry (homelab-inference). The registry
+          # itself is declared in the repo-root .cargo/config.toml.
+          CARGO_REGISTRIES_FORGEJO_TOKEN: "Bearer ${{ secrets.CARGO_REGISTRY_TOKEN }}"
         run: |
           set -eu
           git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
@@ -84,6 +87,9 @@ jobs:
           # leo-owned PAT from Forgejo Actions secrets (org-level).
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE_TOKEN: ${{ secrets.FORGEJOPACKAGES }}
+          # Auth for the Forgejo cargo registry (book-generator pulls
+          # homelab-inference). Unused by the frontend/content-worker images.
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           # docker:27.5.1-cli reaches the DinD sidecar via the bridge gateway.
           DOCKER_HOST: tcp://172.17.0.1:2375
         run: |
@@ -97,6 +103,7 @@ jobs:
           img="${REGISTRY_PUBLIC}/leo/${{ matrix.image }}"
 
           docker build \
+            --build-arg FORGEJO_CARGO_TOKEN="${CARGO_REGISTRY_TOKEN}" \
             --tag "${img}:sha-${short_sha}" \
             --tag "${img}:homelab" \
             --file "repo/${{ matrix.dockerfile }}" \
