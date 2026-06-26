@@ -14,6 +14,15 @@ RUN apt-get update && apt-get install -y \
 
 # Copy full workspace so all members exist (see .dockerignore to limit context)
 COPY . .
+
+# Auth for the Forgejo cargo registry: the workspace includes book-generator,
+# which now depends on homelab-inference (served by the registry declared in the
+# repo-root .cargo/config.toml). The token is supplied as a build-arg; resolving
+# the workspace lockfile needs it even though content-worker itself doesn't use
+# the crate. Confined to this builder stage.
+ARG FORGEJO_CARGO_TOKEN=""
+ENV CARGO_REGISTRIES_FORGEJO_TOKEN="Bearer ${FORGEJO_CARGO_TOKEN}"
+
 RUN cargo generate-lockfile 2>/dev/null || true
 
 # Build only the content-worker package (override repo default wasm32-wasi for native Linux binary)
