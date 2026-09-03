@@ -19,6 +19,11 @@ on:
       - ".forgejo/workflows/homelab-build.yml"
   workflow_dispatch: {}
 
+concurrency:
+  group: homelab-build-${{ github.ref }}
+  # Forgejo's default for on.push cancels the previous run; queue instead.
+  cancel-in-progress: false
+
 env:
   REGISTRY_PUBLIC: git.leopaska.xyz
   REGISTRY_INTERNAL: forgejo-http.forgejo.svc.cluster.local:3000
@@ -28,8 +33,29 @@ jobs:
   test-rust:
     runs-on: docker
     container: rust:1-bookworm
+    outputs:
+      superseded: ${{ steps.head.outputs.superseded }}
+      sha: ${{ steps.head.outputs.sha }}
     steps:
+      - name: Is this commit still the branch HEAD?
+        id: head
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          apt-get update -qq && apt-get install -y -qq git
+          sha="$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
+          head_now="$(git ls-remote "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "refs/heads/${GITHUB_REF_NAME}" | cut -c1-7)"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          if [ -n "${head_now}" ] && [ "${head_now}" != "${sha}" ]; then
+            echo "superseded=true" >> "$GITHUB_OUTPUT"
+            echo "commit ${sha} is no longer ${GITHUB_REF_NAME} HEAD (${head_now}); the newer run builds it — nothing to do here"
+          else
+            echo "superseded=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run book-generator unit tests
+        if: steps.head.outputs.superseded != 'true'
         env:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Auth for the Forgejo cargo registry (homelab-inference). The registry
@@ -37,14 +63,17 @@ jobs:
           CARGO_REGISTRIES_FORGEJO_TOKEN: "Bearer ${{ secrets.CARGO_REGISTRY_TOKEN }}"
         run: |
           set -eu
-          git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
-            "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" repo
+          git init -q repo
+          git -C repo fetch -q --depth 1 "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
+          git -C repo checkout -q FETCH_HEAD
           cd repo/core/book-generator
           # Explicit native target: the workspace .cargo/config.toml defaults
           # to wasm32-wasi for the legacy Spin services.
           cargo test --bin book-generator-server --target x86_64-unknown-linux-gnu
 
   test-frontend:
+    needs: test-rust
+    if: needs.test-rust.outputs.superseded != 'true'
     runs-on: docker
     container: node:20-alpine
     steps:
@@ -54,14 +83,16 @@ jobs:
         run: |
           set -eu
           apk add --no-cache git
-          git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
-            "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" repo
+          git init -q repo
+          git -C repo fetch -q --depth 1 "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
+          git -C repo checkout -q FETCH_HEAD
           cd repo/frontend/app
           npm ci --no-audit --no-fund
           npx tsc --noEmit
 
   build-and-push:
     needs: [test-rust, test-frontend]
+    if: needs.test-rust.outputs.superseded != 'true'
     runs-on: docker
     strategy:
       # One image at a time: the runner pool shares a single DinD sidecar,
@@ -95,10 +126,11 @@ jobs:
         run: |
           set -eu
           apk add --no-cache git skopeo
-          # Clone over the cluster-internal Forgejo URL to avoid public-registry
-          # chunked upload issues seen with Docker 27+.
-          git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
-            "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" repo
+          # Build the exact commit the gate tested — not "branch HEAD at clone
+          # time", which under concurrent pushes could be a newer, untested tree.
+          git init -q repo
+          git -C repo fetch -q --depth 1 "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
+          git -C repo checkout -q FETCH_HEAD
           short_sha="$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
           img="${REGISTRY_PUBLIC}/leo/${{ matrix.image }}"
 
