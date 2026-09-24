@@ -111,7 +111,9 @@ impl Chapter {
         let total_chapters = context.outline.chapters.len().min(config.max_chapters);
         let planned = &context.outline.chapters[chapter_number - 1];
         let chapter_brief = std::iter::once(planned.to_string())
-            .chain(planned.scenes.iter().map(|scene| scene.to_string()))
+            // Scene titles already read "Scene N: ..."; SceneOutline's Display
+            // would prefix the number a second time.
+            .chain(planned.scenes.iter().map(|scene| format!("{}\n{}", scene.title, scene.description)))
             .collect::<Vec<_>>()
             .join("\n");
 
