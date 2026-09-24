@@ -243,7 +243,18 @@ impl Outline {
 
         for line in content.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with("Chapter") || trimmed.starts_with("Introduction") || trimmed.starts_with("Conclusion") {
+            if let Some(scene_title) = scene_header(trimmed) {
+                if let Some(ref mut chapter) = current_chapter {
+                    if let Some(scene) = current_scene.take() {
+                        chapter.scenes.push(scene);
+                    }
+                    current_scene = Some(SceneOutline {
+                        title: scene_title,
+                        description: String::new(),
+                        number: 0,
+                    });
+                }
+            } else if trimmed.starts_with("Chapter") || trimmed.starts_with("Introduction") || trimmed.starts_with("Conclusion") {
                 if let Some(mut chapter) = current_chapter.take() {  // Change: Added 'mut' here
                     if let Some(scene) = current_scene.take() {
                         chapter.scenes.push(scene);
@@ -308,14 +319,18 @@ impl Outline {
                 continue;
             }
             
+            // "Chapter 2 Scene 1: ..." is a scene, not a new chapter.
+            let scene_title = scene_header(trimmed);
+
             // Very flexible chapter title recognition with debug logging
-            let is_chapter = trimmed.starts_with("Chapter ") || 
+            let is_chapter = scene_title.is_none() && (
+                             trimmed.starts_with("Chapter ") ||
                              trimmed.starts_with("CHAPTER ") ||
-                             trimmed == "Introduction" || 
-                             trimmed == "Conclusion" || 
-                             trimmed.starts_with("Prologue") || 
+                             trimmed == "Introduction" ||
+                             trimmed == "Conclusion" ||
+                             trimmed.starts_with("Prologue") ||
                              trimmed.starts_with("Epilogue") ||
-                             (trimmed.contains("Chapter") && trimmed.contains(":"));
+                             (trimmed.contains("Chapter") && trimmed.contains(":")));
             
             if is_chapter {
                 tracing::debug!("Found chapter title: {}", trimmed);
@@ -353,21 +368,23 @@ impl Outline {
             } else if !trimmed.is_empty() {
                 if let Some(ref mut chapter) = current_chapter {
                     // Check if this line might be a scene title or description
-                    let is_scene = trimmed.starts_with("Scene ") || 
+                    let line_text = scene_title.as_deref().unwrap_or(trimmed);
+                    let is_scene = scene_title.is_some() ||
+                                  trimmed.starts_with("Scene ") ||
                                   (trimmed.contains("Scene") && trimmed.contains(":"));
-                    
-                    if chapter.description.is_empty() {
+
+                    if chapter.description.is_empty() && scene_title.is_none() {
                         tracing::debug!("Adding chapter description: {}", trimmed);
                         chapter.description = trimmed.to_string();
                     } else if is_scene {
-                        tracing::debug!("Found scene title: {}", trimmed);
+                        tracing::debug!("Found scene title: {}", line_text);
                         if let Some(scene) = current_scene.take() {
                             chapter.scenes.push(scene);
                         }
-                        
+
                         // Extract scene number if possible
-                        let scene_number = if trimmed.starts_with("Scene ") {
-                            trimmed.strip_prefix("Scene ")
+                        let scene_number = if line_text.starts_with("Scene ") {
+                            line_text.strip_prefix("Scene ")
                                 .and_then(|s| s.split(':').next())
                                 .and_then(|s| s.split_whitespace().next())
                                 .and_then(|s| s.parse::<usize>().ok())
@@ -375,9 +392,9 @@ impl Outline {
                         } else {
                             chapter.scenes.len() + 1
                         };
-                        
+
                         current_scene = Some(SceneOutline {
-                            title: trimmed.to_string(),
+                            title: line_text.to_string(),
                             description: String::new(),
                             number: scene_number,
                         });
@@ -447,6 +464,23 @@ impl Outline {
         
         outline
     }
+}
+
+/// Recognizes a scene header, including the "Chapter 2 Scene 1: Title" form
+/// some models emit, and returns it normalized to "Scene 1: Title". Chapter
+/// headers such as "Chapter 4: The Scene of the Crime" are not scenes.
+fn scene_header(line: &str) -> Option<String> {
+    let mut rest = line.trim();
+    if let Some(after) = rest.strip_prefix("Chapter ") {
+        let digits = after.len() - after.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        if digits == 0 {
+            return None;
+        }
+        rest = after[digits..].trim_start_matches([' ', ',', '-', '–', '—']);
+    }
+    let number = rest.strip_prefix("Scene ")?;
+    let digits = number.len() - number.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    (digits > 0).then(|| rest.to_string())
 }
 
 impl std::fmt::Display for Outline {
@@ -646,5 +680,60 @@ impl ChapterOutline {
             scenes,
             chapter_number: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{scene_header, Outline};
+
+    // The outline Qwen3.8-27B returned on 2026-09-24 (trimmed): scenes carry a
+    // "Chapter N" prefix, which the parsers used to read as new chapters.
+    const CHAPTER_PREFIXED_SCENES: &str = "Chapter 1: The Reverse Tick
+The storm isolates Saltmarsh.
+
+Chapter 1 Scene 1: The Storm's Edge
+Elias watches the sea.
+
+Chapter 1 Scene 2: The Hidden Gear
+The clocks count down.
+
+Chapter 2: The Light in the Dark
+Elias seeks out Tobias.
+
+Chapter 2 Scene 1: Crossing the Causeway
+The storm peaks.
+";
+
+    #[test]
+    fn scene_header_recognizes_both_forms() {
+        assert_eq!(scene_header("Scene 2: The Hidden Gear").as_deref(), Some("Scene 2: The Hidden Gear"));
+        assert_eq!(
+            scene_header("Chapter 1 Scene 1: The Storm's Edge").as_deref(),
+            Some("Scene 1: The Storm's Edge")
+        );
+        assert_eq!(scene_header("Chapter 4: The Scene of the Crime"), None);
+        assert_eq!(scene_header("Scene Description: rain"), None);
+    }
+
+    #[test]
+    fn llm_outline_with_chapter_prefixed_scenes_keeps_chapters() {
+        let outline = Outline::parse_from_llm(CHAPTER_PREFIXED_SCENES);
+        let titles: Vec<_> = outline.chapters.iter().map(|c| c.title.as_str()).collect();
+        assert_eq!(titles, ["Chapter 1: The Reverse Tick", "Chapter 2: The Light in the Dark"]);
+        assert_eq!(outline.chapters[0].scenes.len(), 2);
+        assert_eq!(outline.chapters[0].scenes[1].title, "Scene 2: The Hidden Gear");
+        assert_eq!(outline.chapters[0].scenes[1].description, "The clocks count down.");
+        assert_eq!(outline.chapters[1].scenes.len(), 1);
+    }
+
+    #[test]
+    fn stored_outlines_round_trip_through_from_string() {
+        let reparsed = Outline::from_string(&Outline::parse_from_llm(CHAPTER_PREFIXED_SCENES).to_string());
+        assert_eq!(reparsed.chapters.len(), 2);
+        assert_eq!(reparsed.chapters[0].scenes.len(), 2);
+        assert_eq!(reparsed.chapters[0].scenes[0].title, "Scene 1: The Storm's Edge");
+        // Outlines already stored in the prefixed form also parse correctly.
+        assert_eq!(Outline::from_string(CHAPTER_PREFIXED_SCENES).chapters.len(), 2);
     }
 }
