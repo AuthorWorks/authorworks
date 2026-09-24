@@ -105,11 +105,16 @@ impl Chapter {
             &prompt.template()
         )?;
 
-        // Use only the required context for chapter generation as specified:
-        // - title, braindump, genre, style, characters
-        // - book synopsis
-        // - book outline
-        // - temporary chapter summary
+        // The model must be told WHICH chapter it is writing: given only the
+        // whole book outline it once "continued" past the end and wrote the
+        // finale as Chapter 1.
+        let total_chapters = context.outline.chapters.len().min(config.max_chapters);
+        let planned = &context.outline.chapters[chapter_number - 1];
+        let chapter_brief = std::iter::once(planned.to_string())
+            .chain(planned.scenes.iter().map(|scene| scene.to_string()))
+            .collect::<Vec<_>>()
+            .join("\n");
+
         let output = chain.call(langchain_rust::prompt_args!{
             "title" => title,
             "braindump" => &context.braindump.content,
@@ -118,6 +123,11 @@ impl Chapter {
             "characters" => &context.characters,
             "synopsis" => &context.synopsis.content,
             "book_outline" => &context.outline,
+            "chapter_number" => &chapter_number.to_string(),
+            "total_chapters" => &total_chapters.to_string(),
+            "chapter_title" => title,
+            "chapter_brief" => &chapter_brief,
+            "previous_chapters" => &previous_chapters_text,
             "temporary_summary" => &temp_summary.content
         }).await?;
 

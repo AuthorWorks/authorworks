@@ -187,7 +187,8 @@ impl Outline {
             "genre" => &format!("{} - {}", context.genre.name, context.genre.description),
             "style" => &context.style.description,
             "characters" => &context.characters.to_string(),
-            "synopsis" => &context.synopsis.content
+            "synopsis" => &context.synopsis.content,
+            "chapter_count" => &config.max_chapters.to_string()
         }).await?;
 
         crate::log_with_tracker(

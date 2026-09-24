@@ -112,6 +112,18 @@ impl Characters {
                 });
             }
         }
+        if characters.is_empty() {
+            // Free-form user input such as "Elias Venn, clockmaker; Mara Quill,
+            // his apprentice" has no "Name: description" lines. Keep each
+            // entry instead of silently dropping the user's cast.
+            for entry in content.split([';', '\n']).map(str::trim).filter(|e| !e.is_empty()) {
+                let (name, description) = entry.split_once(',').unwrap_or((entry, ""));
+                characters.push(Character {
+                    name: name.trim().to_string(),
+                    description: description.trim().to_string(),
+                });
+            }
+        }
         Self { list: characters }
     }
 }
@@ -122,5 +134,30 @@ impl std::fmt::Display for Characters {
             writeln!(f, "{}: {}", character.name, character.description)?;
         }
         Ok(())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::Characters;
+
+    #[test]
+    fn parses_name_colon_description_lines() {
+        let parsed = Characters::from_string("Elias Venn: clockmaker\nMara Quill: apprentice");
+        let names: Vec<_> = parsed.list.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["Elias Venn", "Mara Quill"]);
+        assert_eq!(parsed.list[1].description, "apprentice");
+    }
+
+    #[test]
+    fn keeps_free_form_cast_instead_of_dropping_it() {
+        let parsed = Characters::from_string(
+            "Elias Venn, 60s, clockmaker; Mara Quill, 17, his apprentice; Tobias Hale",
+        );
+        let names: Vec<_> = parsed.list.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["Elias Venn", "Mara Quill", "Tobias Hale"]);
+        assert_eq!(parsed.list[0].description, "60s, clockmaker");
+        assert_eq!(parsed.list[2].description, "");
+        // Round-trips through Display back into the colon format.
+        assert_eq!(Characters::from_string(&parsed.to_string()).list.len(), 3);
     }
 }

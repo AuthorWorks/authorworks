@@ -167,8 +167,10 @@ impl BookRenderer {
     }
 
     fn format_chapter(&self, chapter: &Chapter) -> String {
+        // The chapter outline's description is the model's planning note
+        // ("This chapter serves as the inciting incident..."). It stays in the
+        // metadata/logs and is deliberately not rendered into the book.
         let mut content = format!("# {}\n\n", chapter.title);
-        content.push_str(&format!("*{}*\n\n", chapter.outline.description));
         for scene in chapter.scenes.iter() {
             content.push_str(&self.format_scene(scene));
         }
