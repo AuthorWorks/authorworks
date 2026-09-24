@@ -20,10 +20,14 @@ labels:
 # `spec.source.kustomize.images` on the live Application whenever a newer
 # `sha-<commit>` tag appears in the Forgejo registry, so the values here drift
 # only as the repo bootstrap baseline.
+# They must name tags that still exist: sha-7e7fd34 was lost in the
+# 2026-08-02 registry blob loss (manifests 404), so a reset of the live
+# override would have fallen back to unpullable images. sha-46a7170 was
+# verified intact (every blob present) on 2026-09-24.
 images:
   - name: git.leopaska.xyz/leo/authorworks-frontend
-    newTag: sha-7e7fd34
+    newTag: sha-46a7170
   - name: git.leopaska.xyz/leo/authorworks-book-generator
-    newTag: sha-7e7fd34
+    newTag: sha-46a7170
   - name: git.leopaska.xyz/leo/authorworks-content-worker
-    newTag: sha-7e7fd34
+    newTag: sha-46a7170
