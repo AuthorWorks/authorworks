@@ -313,34 +313,36 @@ pub fn read_metadata_file_safe(output_dir: &Path) -> Option<String> {
 
 /// Safely reads a section from the metadata file
 pub fn read_metadata_section_safe(output_dir: &Path, section: &str) -> Option<String> {
-    // Get the metadata content
     let content = read_metadata_file_safe(output_dir)?;
-    
-    // Find the section marker - try both with and without timestamp
-    let section_marker = format!("\n## {}", section);
-    let section_start = content.find(&section_marker)
-        .or_else(|| {
-            // Try to find section with timestamp in parentheses
-            // This handles formats like "## Book Outline (2025-02-26 07:07:22)"
-            content.find(&format!("\n## {} (", section))
-        });
-    
-    if let Some(start) = section_start {
-        // Find the end of this section (start of next section or end of file)
-        let content_after_marker = &content[start + section_marker.len()..];
-        let next_section = content_after_marker.find("\n## ");
-        
-        let section_content = if let Some(end) = next_section {
-            &content_after_marker[..end]
-        } else {
-            content_after_marker
-        };
-        
-        // Trim and return
-        Some(section_content.trim().to_string())
-    } else {
-        None
-    }
+    extract_metadata_section(&content, section)
+}
+
+/// Returns the body of the `## {section}` block, also matching the
+/// `## {section} (<timestamp>)` headers written by `update_metadata`.
+///
+/// The header line itself is never part of the body, and an empty body is
+/// `None`: callers treat `Some` as "the user already supplied this", so a
+/// blank form field (the frontend sends `synopsis: ""`) must still be
+/// generated rather than reused as empty text.
+fn extract_metadata_section(content: &str, section: &str) -> Option<String> {
+    let is_header = |line: &str| {
+        line.strip_prefix("## ").is_some_and(|rest| {
+            let rest = rest.trim_end();
+            rest == section
+                || rest
+                    .strip_prefix(section)
+                    .is_some_and(|tail| tail.starts_with(" ("))
+        })
+    };
+
+    let mut lines = content.lines().skip_while(|line| !is_header(line));
+    lines.next()?;
+    let body = lines
+        .take_while(|line| !line.starts_with("## "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let body = body.trim();
+    (!body.is_empty()).then(|| body.to_string())
 }
 
 /// Updates the metadata file with new content for a section
@@ -437,3 +439,51 @@ fn extract_chapter_number(filename: &str) -> Option<usize> {
     
     None
 } 
+#[cfg(test)]
+mod tests {
+    use super::extract_metadata_section;
+
+    const METADATA: &str = "# Book Metadata
+
+## Title
+The Clockmaker of Saltmarsh
+
+## Characters (2026-09-24 22:52:47)
+
+
+## Synopsis
+
+
+## outline_generation Token Usage (2026-09-24 22:53:51)
+Prompt tokens: 0
+
+## Book Outline (2026-09-24 22:53:51)
+Chapter 1: The Stillness Before
+Scene 1: The Last Light
+";
+
+    #[test]
+    fn plain_and_timestamped_headers_return_only_the_body() {
+        assert_eq!(
+            extract_metadata_section(METADATA, "Title").as_deref(),
+            Some("The Clockmaker of Saltmarsh")
+        );
+        assert_eq!(
+            extract_metadata_section(METADATA, "Book Outline").as_deref(),
+            Some("Chapter 1: The Stillness Before\nScene 1: The Last Light")
+        );
+    }
+
+    #[test]
+    fn empty_sections_are_absent_so_they_get_generated() {
+        assert_eq!(extract_metadata_section(METADATA, "Synopsis"), None);
+        assert_eq!(extract_metadata_section(METADATA, "Characters"), None);
+    }
+
+    #[test]
+    fn missing_or_prefix_only_sections_do_not_match() {
+        assert_eq!(extract_metadata_section(METADATA, "Genre"), None);
+        // "outline" must not match "## outline_generation Token Usage".
+        assert_eq!(extract_metadata_section(METADATA, "outline"), None);
+    }
+}
