@@ -483,6 +483,32 @@ fn scene_header(line: &str) -> Option<String> {
     (digits > 0).then(|| rest.to_string())
 }
 
+/// Strips markdown heading, list-bullet and emphasis decoration from the start
+/// of an outline line ("### Scene 1", "*   **Scene 2") so header detection
+/// sees the text itself.
+fn strip_markdown_decoration(line: &str) -> &str {
+    line.trim()
+        .trim_start_matches('#')
+        .trim_start()
+        .trim_start_matches(['*', '-', '+'])
+        .trim_start()
+        .trim_start_matches(['*', '_'])
+        .trim()
+}
+
+/// Title text of a normalized scene header ("Scene 1: New Rhythms** - In the
+/// workshop..." -> "New Rhythms"): what follows the scene number, cut at a
+/// closing "**" or a " - description" tail.
+fn scene_title_from_header(header: &str) -> String {
+    let after = header.strip_prefix("Scene ").unwrap_or(header);
+    let rest = after
+        .trim_start_matches(|c: char| c.is_ascii_digit())
+        .trim_start_matches([':', '-', '.', '–', '—', ' ']);
+    let rest = &rest[..rest.find("**").unwrap_or(rest.len())];
+    let rest = rest.split(" - ").next().unwrap_or(rest);
+    rest.trim_matches(|c: char| c == '*' || c == '_' || c.is_whitespace()).to_string()
+}
+
 impl std::fmt::Display for Outline {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for chapter in &self.chapters {
@@ -541,11 +567,13 @@ impl ChapterOutline {
                 continue;
             }
             
-            // Check for various scene formats
-            let is_scene_title = line.starts_with("Scene ") || 
-                               (line.contains("Scene") && line.contains(":")) ||
-                               (line.contains("Scene") && line.contains("-")) ||
-                               (line.contains("Scene") && line.contains("."));
+            // Only real scene headers count: "### Scene 1: Title", "*   **Scene 2:
+            // Title** - details", "Chapter 1 Scene 3: Title". The old
+            // contains("Scene") + ':'/'-'/'.' test also turned "## Scene-by-Scene
+            // Development" and prose like "third-person ... in Scenes 2 and 4."
+            // into scenes with junk headings.
+            let header = scene_header(strip_markdown_decoration(line));
+            let is_scene_title = header.is_some();
             
             if is_scene_title {
                 // If we were in a scene description, save it to the previous scene
@@ -557,15 +585,11 @@ impl ChapterOutline {
                 
                 // Extract scene number and title
                 scene_number += 1;
-                let scene_title = if let Some(colon_pos) = line.find(':') {
-                    line[colon_pos+1..].trim().to_string()
-                } else if let Some(dash_pos) = line.find('-') {
-                    line[dash_pos+1..].trim().to_string()
-                } else if let Some(dot_pos) = line.find('.') {
-                    line[dot_pos+1..].trim().to_string()
-                } else {
-                    line.to_string()
-                };
+                let scene_title = header
+                    .as_deref()
+                    .map(scene_title_from_header)
+                    .filter(|t| !t.is_empty())
+                    .unwrap_or_else(|| format!("Scene {}", scene_number));
                 
                 scenes.push(SceneOutline {
                     title: scene_title,
@@ -725,6 +749,46 @@ The storm peaks.
         assert_eq!(outline.chapters[0].scenes[1].title, "Scene 2: The Hidden Gear");
         assert_eq!(outline.chapters[0].scenes[1].description, "The clocks count down.");
         assert_eq!(outline.chapters[1].scenes.len(), 1);
+    }
+
+    // Per-chapter outline Qwen3.8-27B returned on 2026-09-25 (trimmed): real
+    // scenes are "### Scene N:" headings; the section header and a stylistic
+    // note that mention "Scene" must not become scenes.
+    const CHAPTER_OUTLINE_MARKDOWN: &str = "# Chapter 1: The Backward Tick
+
+## Overview
+A contained microcosm of the novel's central theme.
+
+## Scene-by-Scene Development
+
+### Scene 1: The First Anomaly
+*   **Setting:** Elias's workshop, late evening.
+
+### Scene 2: The Apprentice's Silence
+*   **Setting:** Same workshop, moments later.
+
+*   **Scene 3: New Rhythms** - The clocks tick forward again.
+
+## Stylistic Notes
+*   Maintain third-person past tense, shifting subtly to Mara in Scenes 2 and 4.
+";
+
+    #[test]
+    fn chapter_outline_keeps_only_real_scene_headers() {
+        let outline = super::ChapterOutline::parse_from_llm(CHAPTER_OUTLINE_MARKDOWN);
+        let titles: Vec<_> = outline.scenes.iter().map(|s| s.title.as_str()).collect();
+        assert_eq!(titles, ["The First Anomaly", "The Apprentice's Silence", "New Rhythms"]);
+        assert!(outline.scenes[0].description.contains("late evening"));
+    }
+
+    #[test]
+    fn chapter_outline_plain_format_still_parses() {
+        let outline = super::ChapterOutline::parse_from_llm(
+            "Chapter 2: The Light\nChapter Description: Elias seeks help.\nScene 1: Crossing\nScene Description: The storm peaks.\nScene 2 - The Keeper\nTobias listens.",
+        );
+        let titles: Vec<_> = outline.scenes.iter().map(|s| s.title.as_str()).collect();
+        assert_eq!(titles, ["Crossing", "The Keeper"]);
+        assert_eq!(outline.scenes[0].description, "The storm peaks.");
     }
 
     #[test]
