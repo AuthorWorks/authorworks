@@ -998,7 +998,11 @@ pub async fn generate_remaining_content(
     // Update the chapter content with all scene content
     let mut full_content = String::new();
     for scene in &chapter.scenes {
-        full_content += &format!("## {}\n\n", scene.title);
+        // Models wrap outline titles in markdown emphasis ("**Scene 1: New
+        // Rhythms**"); the parsed title keeps the trailing "**", which then
+        // showed up in the chapter text synced to the app.
+        let title = scene.title.trim_matches(|c: char| c == '*' || c == '_' || c.is_whitespace());
+        full_content += &format!("## {}\n\n", title);
         full_content += &scene.content.text;
         full_content += "\n\n";
     }

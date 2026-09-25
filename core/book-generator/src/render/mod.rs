@@ -230,12 +230,14 @@ pub fn generate_pdf_and_epub(output_dir: &Path, book_title: &str, author: &str) 
     
     // Create a YAML metadata block for pandoc
     let mut full_content = String::new();
+    // Copyright notices use the publication year (was hard-coded to 2025).
+    let year = chrono::Local::now().format("%Y").to_string();
     
     // Enhanced YAML metadata block for better pandoc processing
     full_content.push_str("---\n");
     full_content.push_str(&format!("title: {}\n", book_title));
     full_content.push_str(&format!("author: {}\n", author));
-    full_content.push_str("rights: Copyright © 2025\n");
+    full_content.push_str(&format!("rights: Copyright © {}\n", year));
     full_content.push_str("language: en-US\n");
     full_content.push_str("documentclass: book\n");
     full_content.push_str("classoption: oneside\n");
@@ -255,7 +257,7 @@ pub fn generate_pdf_and_epub(output_dir: &Path, book_title: &str, author: &str) 
     // Create a professional title page with proper formatting
     full_content.push_str(&format!("<h1 class=\"title\">{}</h1>\n\n", book_title));
     full_content.push_str(&format!("<p class=\"author\">{}</p>\n\n", author));
-    full_content.push_str("<p class=\"copyright\">Copyright © 2025</p>\n\n");
+    full_content.push_str(&format!("<p class=\"copyright\">Copyright © {}</p>\n\n", year));
     full_content.push_str("\\newpage\n\n");
     
     // Add a proper copyright page that will appear after the TOC
@@ -263,7 +265,7 @@ pub fn generate_pdf_and_epub(output_dir: &Path, book_title: &str, author: &str) 
     full_content.push_str("<div class=\"copyright-page\">\n");
     full_content.push_str(&format!("<p>{}</p>\n\n", book_title));
     full_content.push_str("<p>Published by P.I.E. LLC</p>\n\n");
-    full_content.push_str("<p>Copyright © 2025 by ");
+    full_content.push_str(&format!("<p>Copyright © {} by ", year));
     full_content.push_str(author);
     full_content.push_str("</p>\n\n");
     full_content.push_str("<p>All rights reserved. No part of this publication may be reproduced, distributed, or transmitted in any form or by any means, including photocopying, recording, or other electronic or mechanical methods, without the prior written permission of the publisher, except in the case of brief quotations embodied in critical reviews and certain other noncommercial uses permitted by copyright law.</p>\n\n");
@@ -682,7 +684,7 @@ div.copyright-page p {
         epub_author_metadata,
         "--metadata=publisher:P.I.E. LLC".to_string(),       // Set publisher to P.I.E. LLC
         "--metadata=lang:en-US".to_string(),
-        "--metadata=rights:Copyright © 2025".to_string(),
+        format!("--metadata=rights:Copyright © {}", chrono::Local::now().format("%Y")),
         "--css=epub.css".to_string(),              // Specify the CSS file for styling
         // Note: chapters split at level-1 headings by default. `--split-level`
         // only exists in pandoc >= 3.0 and aborts pandoc 2.x (Debian bookworm),
@@ -695,9 +697,9 @@ div.copyright-page p {
 <dc:title>{}</dc:title>
 <dc:creator>{}</dc:creator>
 <dc:publisher>P.I.E. LLC</dc:publisher>
-<dc:rights>Copyright © 2025</dc:rights>
+<dc:rights>Copyright © {}</dc:rights>
 <dc:identifier id="pub-id">urn:uuid:{}</dc:identifier>
-"#, display_title, author, uuid::Uuid::new_v4());
+"#, display_title, author, chrono::Local::now().format("%Y"), uuid::Uuid::new_v4());
     
     fs::write(output_dir.join("metadata.xml"), metadata_xml)?;
     
