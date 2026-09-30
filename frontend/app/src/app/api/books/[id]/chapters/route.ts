@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserId, unauthorized } from '@/app/lib/auth'
-import { countWords } from '@/app/lib/chapters'
+import { createChapterForUser } from '@/app/lib/chapters'
 import { getPool } from '@/app/lib/db'
 import { getContentSchemaTables } from '@/app/lib/db-schema'
 
@@ -49,28 +49,14 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   const pool = getPool()
   try {
-    const { booksTable, chaptersTable, bookOwnerCol } = await getContentSchemaTables(pool)
-    const owned = await pool.query(
-      `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
-      [params.id, userId]
-    )
-    if (owned.rows.length === 0) {
+    const created = await createChapterForUser(pool, params.id, userId, {
+      title: body.title ?? null,
+      content: body.content ?? null,
+    })
+    if (!created) {
       return NextResponse.json({ error: 'Book not found' }, { status: 404 })
     }
-
-    const next = await pool.query(
-      `SELECT COALESCE(MAX(chapter_number), 0) + 1 AS next_num FROM ${chaptersTable} WHERE book_id = $1`,
-      [params.id]
-    )
-    const nextNumber = next.rows[0].next_num
-
-    const content = body.content ?? ''
-    const result = await pool.query(
-      `INSERT INTO ${chaptersTable} (book_id, chapter_number, title, content, word_count)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [params.id, nextNumber, body.title ?? null, content, countWords(content)]
-    )
-    return NextResponse.json(result.rows[0], { status: 201 })
+    return NextResponse.json(created, { status: 201 })
   } catch (error) {
     console.error('POST /api/books/[id]/chapters failed:', error)
     return NextResponse.json({ error: 'Failed to create chapter' }, { status: 500 })
