@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "next lint",
-    "e2e:journey": "node scripts/e2e-user-journey.mjs"
+    "e2e:journey": "node scripts/e2e-user-journey.mjs",
+    "test:admission": "tsc -p tsconfig.admission.json && rm -rf .hermes-build/admission-lib && cp -R .hermes-build/src/app/lib/admission .hermes-build/admission-lib && node --test tests/admission.test.mjs"
   },
   "dependencies": {
     "@logto/next": "^3.0.0",
