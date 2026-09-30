@@ -22,7 +22,7 @@ interface Book {
 export default function BooksPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { isAuthenticated, isLoading, accessToken } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -41,7 +41,6 @@ export default function BooksPage() {
       if (statusFilter !== 'all') params.set('status', statusFilter)
       
       const response = await fetch(`/api/books?${params}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) throw new Error('Failed to fetch books')
       return response.json()
@@ -53,7 +52,6 @@ export default function BooksPage() {
     mutationFn: async (bookId: string) => {
       const response = await fetch(`/api/books/${bookId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) throw new Error('Failed to delete book')
     },

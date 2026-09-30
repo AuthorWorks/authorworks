@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getLogtoEndpoint, toClientUser, type LogtoUserInfo } from '@/app/lib/auth'
+import { getPool } from '@/app/lib/db'
+import { SESSION_COOKIE, createSession, sessionCookieAttributes } from '@/app/lib/session'
 
 /**
  * POST /api/auth/callback
@@ -8,9 +10,14 @@ import { getLogtoEndpoint, toClientUser, type LogtoUserInfo } from '@/app/lib/au
  *  1. Exchange the auth code + verifier for tokens at Logto.
  *  2. Resolve the user via /oidc/me so the client gets a ready-to-use session.
  *  3. Best-effort sync of the resulting user to a downstream user-service when configured.
+ *  4. Persist a server-side session (access + refresh tokens encrypted at
+ *     rest) and set a single HttpOnly, Secure, SameSite=Strict cookie.
  *
- * Returns { accessToken, refreshToken, expiresIn, user } — the contract the
- * client AuthProvider consumes.
+ * Tokens are NEVER returned to the browser: no bearer token lands in
+ * localStorage, and the refresh token is no longer discarded — the server
+ * keeps it to renew the session transparently.
+ *
+ * Returns { user } — the client session is the cookie.
  */
 export async function POST(request: NextRequest) {
   let body: { code?: string; codeVerifier?: string; redirectUri?: string }
@@ -61,6 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve the user so the client can hydrate its session in one round trip.
+    // A session is only minted when the user is positively resolved (fail closed).
     let user = null
     try {
       const userResponse = await fetch(`${getLogtoEndpoint()}/oidc/me`, {
@@ -72,6 +80,12 @@ export async function POST(request: NextRequest) {
       }
     } catch (error) {
       console.warn('Userinfo fetch failed during callback:', error)
+    }
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentication callback failed to resolve user' },
+        { status: 502 }
+      )
     }
 
     // Optional downstream user-sync. Failure here is non-blocking: the user is still
@@ -92,12 +106,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token ?? null,
-      expiresIn: tokens.expires_in ?? null,
-      user,
-    })
+    // Mint the server-side session: tokens stay server-side (encrypted at
+    // rest), the browser only holds the signed opaque session cookie.
+    let cookieValue: string
+    try {
+      cookieValue = await createSession(
+        getPool(),
+        user.id,
+        tokens.access_token,
+        tokens.refresh_token ?? null
+      )
+    } catch (error) {
+      console.error('Session creation failed:', error)
+      return NextResponse.json({ error: 'Failed to establish session' }, { status: 500 })
+    }
+
+    const response = NextResponse.json({ user })
+    response.headers.append(
+      'Set-Cookie',
+      `${SESSION_COOKIE}=${cookieValue}; ${sessionCookieAttributes()}`
+    )
+    return response
   } catch (error) {
     console.error('Logto callback failed:', error)
     return NextResponse.json({ error: 'Authentication callback failed' }, { status: 500 })

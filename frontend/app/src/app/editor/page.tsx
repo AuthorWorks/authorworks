@@ -9,7 +9,7 @@ import { useAuth } from '../hooks/useAuth'
 
 export default function EditorPage() {
   const router = useRouter()
-  const { isAuthenticated, isLoading, accessToken } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
 
   // Redirect to home if not authenticated
   useEffect(() => {
@@ -23,14 +23,11 @@ export default function EditorPage() {
     queryKey: ['recent-books-editor'],
     queryFn: async () => {
       const response = await fetch('/api/books?limit=10', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
       })
       if (!response.ok) throw new Error('Failed to fetch books')
       return response.json()
     },
-    enabled: isAuthenticated && !!accessToken,
+    enabled: isAuthenticated,
   })
 
   // If there's a recent book, redirect to it

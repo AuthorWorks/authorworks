@@ -42,7 +42,7 @@ export default function EditorPage() {
   const params = useParams()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { isAuthenticated, isLoading: authLoading, accessToken } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const chapterId = params.id as string
 
   const [editorValue, setEditorValue] = useState<Descendant[]>([])
@@ -60,7 +60,6 @@ export default function EditorPage() {
     queryKey: ['chapter', chapterId],
     queryFn: async () => {
       const response = await fetch(`/api/chapters/${chapterId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) throw new Error('Failed to fetch chapter')
       return response.json()
@@ -88,7 +87,6 @@ export default function EditorPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify(data),
       })
@@ -132,7 +130,6 @@ export default function EditorPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           chapter_id: chapterId,

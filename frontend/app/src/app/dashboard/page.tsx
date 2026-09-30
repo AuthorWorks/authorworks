@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 
 export default function Dashboard() {
   const router = useRouter()
-  const { isAuthenticated, isLoading, accessToken, user } = useAuth()
+  const { isAuthenticated, isLoading, user } = useAuth()
 
   // Redirect to home if not authenticated
   useEffect(() => {
@@ -23,9 +23,6 @@ export default function Dashboard() {
     queryKey: ['dashboard-stats'],
     queryFn: async () => {
       const response = await fetch('/api/dashboard/stats', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
       })
       if (!response.ok) throw new Error('Failed to fetch stats')
       return response.json()
@@ -37,9 +34,6 @@ export default function Dashboard() {
     queryKey: ['recent-books'],
     queryFn: async () => {
       const response = await fetch('/api/books?limit=5', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
       })
       if (!response.ok) throw new Error('Failed to fetch books')
       return response.json()
