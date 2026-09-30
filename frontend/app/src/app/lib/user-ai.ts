@@ -1,6 +1,7 @@
 import type { Pool } from 'pg'
 import type { AiOverride } from './ai'
 import { decryptSecret } from './crypto'
+import { isPrivateAddress } from './ssrf-guard'
 
 /**
  * Per-user AI provider settings (bring-your-own-key / bring-your-own-inference).
@@ -38,21 +39,25 @@ export async function ensureAiSettingsTable(pool: Pool): Promise<void> {
 
 const PRIVATE_HOST_PATTERNS = [
   /^localhost$/i,
-  /^127\./,
-  /^0\.0\.0\.0$/,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2\d|3[01])\./,
-  /^169\.254\./,
   /\.cluster\.local$/i,
-  /^\[?::1\]?$/,
-  /^\[?fd[0-9a-f]{2}:/i,
+  /\.internal$/i,
+  /\.local$/i,
 ]
 
 /**
- * Validates a user-supplied inference endpoint. Blocks cluster-internal and
- * private addresses unless AI_ALLOW_PRIVATE_ENDPOINTS=true (for self-hosted
- * single-tenant deployments where "internal inference" is the point).
+ * Validates a user-supplied inference endpoint at save time.
+ *
+ * This is a fast pre-check only, NOT the SSRF enforcement point: hostname
+ * strings say nothing about what DNS later resolves to (rebinding). Real
+ * enforcement happens at connection time in lib/ssrf-guard.ts (see safeFetch,
+ * used by lib/ai.ts for every user-override call): every resolved address is
+ * range-checked as the socket connects, literal IPv4/IPv6 (including
+ * IPv4-mapped ::ffff:0:0/96, unique-local fc00::/7, link-local fe80::/10)
+ * hosts are blocked, embedded URL credentials are rejected, and redirects are
+ * followed manually with per-hop re-validation.
+ *
+ * AI_ALLOW_PRIVATE_ENDPOINTS=true re-permits private endpoints (self-hosted
+ * single-tenant deployments where internal inference is the point).
  */
 export function validateInferenceUrl(raw: string): { ok: true; url: string } | { ok: false; error: string } {
   let parsed: URL
@@ -64,8 +69,19 @@ export function validateInferenceUrl(raw: string): { ok: true; url: string } | {
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     return { ok: false, error: 'URL must be http(s)' }
   }
+  if (parsed.username || parsed.password) {
+    return { ok: false, error: 'Embedded credentials in the URL are not allowed' }
+  }
   const allowPrivate = process.env.AI_ALLOW_PRIVATE_ENDPOINTS === 'true'
-  if (!allowPrivate && PRIVATE_HOST_PATTERNS.some((p) => p.test(parsed.hostname))) {
+  // Literal IPs get the full range check (IPv4 + all IPv6 forms); hostnames
+  // are only pattern-checked here and DNS-validated at connect time.
+  const literalIp =
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(parsed.hostname) || parsed.hostname.includes(':')
+  if (
+    !allowPrivate &&
+    (PRIVATE_HOST_PATTERNS.some((p) => p.test(parsed.hostname)) ||
+      (literalIp && isPrivateAddress(parsed.hostname)))
+  ) {
     return { ok: false, error: 'Private or cluster-internal endpoints are not allowed' }
   }
   return { ok: true, url: raw.replace(/\/+$/, '') }
@@ -106,8 +122,25 @@ export async function getUserAiSettings(pool: Pool, userId: string): Promise<Use
 /**
  * Resolves the AI override for a user, decrypting the stored key.
  * Returns null when the user is on the platform default.
+ *
+ * FAIL-CLOSED for unguarded downstream consumers: /api/generate/book forwards
+ * the override's base_url + key to the Rust book-generator, which dials the
+ * endpoint itself (via the shared homelab-inference crate) with NO
+ * connect-time SSRF guard. Until the generator enforces connection-time
+ * address validation (see docs/integration-proposals/auth-byok-hardening.md),
+ * overrides are suppressed and generation falls back to the platform gateway
+ * for every consumer of this helper. Set BYOK_GENERATOR_GUARDED=true only
+ * after the generator patch ships, restoring BYOK for outline/enhance/book.
  */
 export async function getUserAiOverride(pool: Pool, userId: string): Promise<AiOverride | null> {
+  if (process.env.BYOK_GENERATOR_GUARDED !== 'true') {
+    console.warn(
+      '[security] BYOK inference overrides suppressed (fail-closed): the book-generator path ' +
+        'lacks connect-time endpoint enforcement. See docs/integration-proposals/auth-byok-hardening.md; ' +
+        'set BYOK_GENERATOR_GUARDED=true once the generator guard ships.'
+    )
+    return null
+  }
   let row: AiSettingsRow | null
   try {
     row = await loadRow(pool, userId)

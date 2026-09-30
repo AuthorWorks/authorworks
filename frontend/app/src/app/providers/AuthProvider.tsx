@@ -3,6 +3,22 @@
 import { useRouter } from 'next/navigation';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 
+/**
+ * Browser session state.
+ *
+ * Security model (auth audit remediation): the browser holds NO tokens. The
+ * session is a single HttpOnly, Secure, SameSite=Strict cookie minted by
+ * /api/auth/callback; authenticated same-origin fetches rely on that cookie
+ * being attached automatically. The previous design persisted the Logto
+ * access token in localStorage (XSS-stealable) and discarded the refresh
+ * token; both are fixed — tokens stay server-side, and the refresh token is
+ * used there to renew the session transparently.
+ *
+ * Consumers must NOT send Authorization headers for same-origin API calls;
+ * the cookie authenticates them and the server's Origin check (plus
+ * SameSite=Strict) provides CSRF protection.
+ */
+
 interface User {
   id: string;
   name: string;
@@ -14,7 +30,6 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  accessToken: string | null;
 }
 
 interface AuthContextType extends AuthState {
@@ -87,36 +102,32 @@ function generateRandomString(length: number): string {
   return result;
 }
 
+// The PKCE state/verifier are one-time, short-lived values: sessionStorage
+// (cleared with the tab) instead of the persistent localStorage the previous
+// implementation used.
+const OAUTH_STATE_KEY = 'oauth_state';
+const OAUTH_VERIFIER_KEY = 'code_verifier';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
     isAuthenticated: false,
     isLoading: true,
-    accessToken: null,
   });
 
-  // Check for existing session on mount
+  // Check for existing session on mount (HttpOnly cookie; no client tokens)
   useEffect(() => {
     checkSession();
   }, []);
 
   const checkSession = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        setAuthState((prev) => ({ ...prev, isLoading: false }));
-        return;
-      }
-
-      // Add timeout to prevent stalling
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
       const response = await fetch('/api/auth/me', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'same-origin',
         signal: controller.signal,
       });
 
@@ -128,17 +139,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           user: data.user ?? data,
           isAuthenticated: true,
           isLoading: false,
-          accessToken: token,
         });
       } else {
-        // Token invalid, clear it
-        localStorage.removeItem('accessToken');
         setAuthState((prev) => ({ ...prev, isLoading: false }));
       }
     } catch (error) {
-      // On timeout or network error, clear potentially stale token
       console.error('Session check failed:', error);
-      localStorage.removeItem('accessToken');
       setAuthState((prev) => ({ ...prev, isLoading: false }));
     }
   };
@@ -146,18 +152,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const initiateAuth = useCallback(async (isSignUp: boolean = false) => {
     const config = await getAuthConfig();
 
-    // Clear any stale tokens before starting new auth flow
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('oauth_state');
-    localStorage.removeItem('code_verifier');
+    // Clear stale flow state and any legacy tokens before starting a new flow
+    try {
+      localStorage.removeItem('accessToken');
+      sessionStorage.removeItem(OAUTH_STATE_KEY);
+      sessionStorage.removeItem(OAUTH_VERIFIER_KEY);
+    } catch {
+      // storage unavailable (private mode etc.) - flow values below still work
+    }
 
     // Generate state for CSRF protection
     const state = generateRandomString(32);
-    localStorage.setItem('oauth_state', state);
+    sessionStorage.setItem(OAUTH_STATE_KEY, state);
 
     // Generate PKCE code verifier (43-128 characters per RFC 7636)
     const codeVerifier = generateRandomString(64);
-    localStorage.setItem('code_verifier', codeVerifier);
+    sessionStorage.setItem(OAUTH_VERIFIER_KEY, codeVerifier);
 
     // Generate S256 code challenge
     const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -192,21 +202,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const handleCallback = useCallback(
     async (code: string, state: string) => {
       // Verify state
-      const savedState = localStorage.getItem('oauth_state');
+      const savedState = sessionStorage.getItem(OAUTH_STATE_KEY);
       if (state !== savedState) {
         throw new Error('Invalid state parameter');
       }
 
-      const codeVerifier = localStorage.getItem('code_verifier');
+      const codeVerifier = sessionStorage.getItem(OAUTH_VERIFIER_KEY);
       if (!codeVerifier) {
         throw new Error('Missing code verifier');
       }
 
       const config = await getAuthConfig();
 
-      // Exchange code for tokens
+      // Exchange code for tokens; the server stores them and sets the
+      // HttpOnly session cookie. No token is returned to the browser.
       const response = await fetch('/api/auth/callback', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -217,26 +229,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }),
       });
 
+      sessionStorage.removeItem(OAUTH_STATE_KEY);
+      sessionStorage.removeItem(OAUTH_VERIFIER_KEY);
+
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown error' }));
         throw new Error(error.error || 'Token exchange failed');
       }
 
-      const { accessToken, user } = await response.json();
-      if (!accessToken) {
-        throw new Error('Token exchange returned no access token');
+      const { user } = await response.json();
+      if (!user) {
+        throw new Error('Token exchange returned no user');
       }
 
-      // Store token
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.removeItem('oauth_state');
-      localStorage.removeItem('code_verifier');
-
       setAuthState({
-        user: user ?? null,
+        user,
         isAuthenticated: true,
         isLoading: false,
-        accessToken,
       });
 
       router.push('/dashboard');
@@ -247,16 +256,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     const config = await getAuthConfig();
 
-    // Clear local auth state first
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('oauth_state');
-    localStorage.removeItem('code_verifier');
+    // Revoke the server-side session (Logto refresh token + session row) and
+    // clear the session cookie. The Origin header browsers send on POSTs makes
+    // this CSRF-safe server-side.
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } catch {
+      // proceed with local cleanup and IdP logout regardless
+    }
 
     setAuthState({
       user: null,
       isAuthenticated: false,
       isLoading: false,
-      accessToken: null,
     });
 
     // Redirect to Logto's end session endpoint to clear the IdP session

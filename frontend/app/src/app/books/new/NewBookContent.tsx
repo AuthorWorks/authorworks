@@ -25,7 +25,7 @@ const STYLE_PRESETS = [
 
 export default function NewBookContent() {
   const router = useRouter()
-  const { isAuthenticated, isLoading, accessToken } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
 
   // Basic info
   const [title, setTitle] = useState('')
@@ -104,7 +104,6 @@ export default function NewBookContent() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           title,
@@ -131,7 +130,6 @@ export default function NewBookContent() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
             },
             body: JSON.stringify({
               book_id: data.id,

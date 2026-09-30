@@ -31,7 +31,7 @@ export default function ChapterEditorPage({
 }) {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { isAuthenticated, isLoading: authLoading, accessToken } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const [content, setContent] = useState('')
   const [title, setTitle] = useState('')
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
@@ -48,12 +48,11 @@ export default function ChapterEditorPage({
     queryKey: ['book', params.id],
     queryFn: async () => {
       const response = await fetch(`/api/books/${params.id}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) throw new Error('Failed to fetch book')
       return response.json()
     },
-    enabled: isAuthenticated && !!accessToken,
+    enabled: isAuthenticated,
   })
 
   // Fetch chapter
@@ -61,12 +60,11 @@ export default function ChapterEditorPage({
     queryKey: ['chapter', params.chapterId],
     queryFn: async () => {
       const response = await fetch(`/api/chapters/${params.chapterId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) throw new Error('Failed to fetch chapter')
       return response.json()
     },
-    enabled: isAuthenticated && !!accessToken,
+    enabled: isAuthenticated,
   })
 
   // Set initial content when chapter loads
@@ -84,7 +82,6 @@ export default function ChapterEditorPage({
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify(data),
       })

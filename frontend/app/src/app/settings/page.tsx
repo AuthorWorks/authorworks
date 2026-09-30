@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 export default function SettingsPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { isAuthenticated, isLoading: authLoading, accessToken, user } = useAuth()
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth()
   
   const [activeTab, setActiveTab] = useState('profile')
   const [name, setName] = useState('')
@@ -40,7 +40,6 @@ export default function SettingsPage() {
     queryKey: ['profile'],
     queryFn: async () => {
       const response = await fetch('/api/users/profile', {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) return null
       return response.json()
@@ -60,7 +59,6 @@ export default function SettingsPage() {
     queryKey: ['ai-settings'],
     queryFn: async () => {
       const response = await fetch('/api/users/ai-settings', {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) return null
       return response.json()
@@ -93,7 +91,6 @@ export default function SettingsPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify(payload),
       })
@@ -113,7 +110,6 @@ export default function SettingsPage() {
     queryKey: ['subscription'],
     queryFn: async () => {
       const response = await fetch('/api/subscription', {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) throw new Error('Failed to fetch subscription')
       return response.json()
@@ -128,7 +124,6 @@ export default function SettingsPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ name, bio, website }),
       })

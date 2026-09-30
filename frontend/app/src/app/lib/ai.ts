@@ -14,6 +14,8 @@
  *  - AI_PROVIDER=anthropic + ANTHROPIC_API_KEY — Anthropic Messages API
  */
 
+import { safeFetch } from './ssrf-guard'
+
 export type AiProvider = 'anthropic' | 'openai'
 
 export interface ChatMessage {
@@ -109,6 +111,12 @@ export async function chatCompletion(
   const maxTokens = options.maxTokens ?? 8000
   const temperature = options.temperature ?? 0.7
 
+  // User-supplied endpoints connect through the SSRF guard: connect-time
+  // address validation (no DNS rebinding window), full IPv4/IPv6 private-range
+  // blocking, and manual redirects with per-hop re-validation. Platform
+  // defaults are operator-configured env vars and keep plain fetch.
+  const doFetch = options.override ? safeFetch : fetch
+
   if (config.provider === 'anthropic') {
     const response = await fetch(`${config.baseUrl}/v1/messages`, {
       method: 'POST',
@@ -144,7 +152,7 @@ export async function chatCompletion(
     headers.Authorization = `Bearer ${config.apiKey}`
   }
 
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+  const response = await doFetch(`${config.baseUrl}/chat/completions`, {
     method: 'POST',
     headers,
     body: JSON.stringify({

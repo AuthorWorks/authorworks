@@ -62,7 +62,7 @@ const PHASE_LABELS: Record<string, string> = {
 export default function BookDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { isAuthenticated, isLoading: authLoading, accessToken } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const [showNewChapter, setShowNewChapter] = useState(false)
   const [newChapterTitle, setNewChapterTitle] = useState('')
   const [generationError, setGenerationError] = useState<string | null>(null)
@@ -80,12 +80,11 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
     queryKey: ['book', params.id],
     queryFn: async () => {
       const response = await fetch(`/api/books/${params.id}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) throw new Error('Failed to fetch book')
       return response.json()
     },
-    enabled: isAuthenticated && !!accessToken,
+    enabled: isAuthenticated,
   })
 
   // Fetch chapters
@@ -93,12 +92,11 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
     queryKey: ['chapters', params.id],
     queryFn: async () => {
       const response = await fetch(`/api/books/${params.id}/chapters`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) return { chapters: [] }
       return response.json()
     },
-    enabled: isAuthenticated && !!accessToken,
+    enabled: isAuthenticated,
   })
 
   // Resume polling for a generation that was started earlier (e.g. before a reload).
@@ -113,12 +111,11 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
     queryKey: ['generation-status', activeJobId],
     queryFn: async () => {
       const response = await fetch(`/api/generate/book/status/${activeJobId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) throw new Error('Failed to fetch generation status')
       return response.json()
     },
-    enabled: isAuthenticated && !!accessToken && !!activeJobId,
+    enabled: isAuthenticated && !!activeJobId,
     refetchInterval: (query) => {
       const status = query.state.data?.status
       return status === 'completed' || status === 'failed' || status === 'cancelled' ? false : 5000
@@ -147,13 +144,12 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
     queryKey: ['exports', params.id],
     queryFn: async () => {
       const response = await fetch(`/api/books/${params.id}/export`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (!response.ok) return { files: [] }
       return response.json()
     },
     enabled:
-      isAuthenticated && !!accessToken && !!book?.metadata?.generation_completed,
+      isAuthenticated && !!book?.metadata?.generation_completed,
   })
   const downloadableFiles = (exportsData?.files || []).filter(
     (f) => f.endsWith('.epub') || f.endsWith('.pdf')
@@ -167,7 +163,7 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
     try {
       const response = await fetch(
         `/api/books/${params.id}/export?file=${encodeURIComponent(file)}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+        {}
       )
       if (!response.ok) throw new Error('Download failed')
       const blob = await response.blob()
@@ -194,7 +190,6 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ title: newChapterTitle || null }),
       })
@@ -217,7 +212,6 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           book_id: params.id,
@@ -254,7 +248,6 @@ export default function BookDetailPage({ params }: { params: { id: string } }) {
       for (const chapter of currentChapters) {
         const response = await fetch(`/api/chapters/${chapter.id}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${accessToken}` },
         })
         if (!response.ok) {
           throw new Error('Failed to delete chapter')
