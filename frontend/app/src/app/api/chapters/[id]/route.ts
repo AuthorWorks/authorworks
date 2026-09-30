@@ -35,7 +35,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
   const userId = await getUserId(request)
   if (!userId) return unauthorized()
 
-  let body: { title?: string | null; content?: string | null }
+  let body: { title?: string | null; content?: string | null; expected_updated_at?: string }
   try {
     body = await request.json()
   } catch {
@@ -44,7 +44,17 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
 
   const pool = getPool()
   try {
-    const updated = await updateChapterForUser(pool, params.id, userId, body)
+    const updated = await updateChapterForUser(pool, params.id, userId, body, {
+      expected_updated_at: body.expected_updated_at,
+    })
+    if (updated === 'conflict') {
+      // Optimistic concurrency: another save (or a completion) won; the
+      // caller should reload rather than silently overwrite the newer text.
+      return NextResponse.json(
+        { error: 'Chapter was modified by another save; reload and retry' },
+        { status: 409 }
+      )
+    }
     if (!updated) {
       return NextResponse.json({ error: 'Chapter not found' }, { status: 404 })
     }

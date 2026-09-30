@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUserId, unauthorized } from '@/app/lib/auth'
 import { getPool } from '@/app/lib/db'
 import { getContentSchemaTables } from '@/app/lib/db-schema'
+import { recordGenerationStart } from '@/app/lib/manuscript'
 import { getUserAiOverride } from '@/app/lib/user-ai'
 
 const DEFAULT_BOOK_GENERATOR_URL =
@@ -97,21 +98,16 @@ export async function POST(request: NextRequest) {
 
   // Record the active job on the book so the UI can resume progress polling
   // after a reload (the status route flips this to completed/failed).
+  // `recordGenerationStart` also captures the generation-start baseline — a
+  // fingerprint of the book's current chapters taken under the per-book lock.
+  // Completion refuses to replace chapters unless this fingerprint still
+  // matches, which is what protects author edits made while a job runs.
   try {
-    await getPool().query(
-      `UPDATE ${booksTable} SET
-         metadata = COALESCE(metadata, '{}'::jsonb) || $1,
-         updated_at = NOW()
-       WHERE id = $2`,
-      [
-        JSON.stringify({
-          generation_job_id: result.job_id,
-          generation_status: 'running',
-          generation_started_at: new Date().toISOString(),
-        }),
-        body.book_id,
-      ]
-    )
+    await recordGenerationStart(getPool(), body.book_id, result.job_id, {
+      generation_job_id: result.job_id,
+      generation_status: 'running',
+      generation_started_at: new Date().toISOString(),
+    })
   } catch (error) {
     console.warn('Failed to record generation job on book (non-fatal):', error)
   }

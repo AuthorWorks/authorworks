@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Pool } from 'pg'
 import { getUserId, unauthorized } from '@/app/lib/auth'
-import { countWords } from '@/app/lib/chapters'
 import { getPool } from '@/app/lib/db'
 import { getContentSchemaTables } from '@/app/lib/db-schema'
+import {
+  applyGenerationCompletion,
+  type CompletionOutput,
+} from '@/app/lib/manuscript'
 
 const DEFAULT_BOOK_GENERATOR_URL =
   'http://authorworks-book-generator.authorworks.svc.cluster.local:8081'
@@ -12,14 +15,19 @@ interface JobStatus {
   status: string
   book_id?: string
   error?: string
-  synced?: boolean
   synopsis?: string
   themes?: string[]
+  pdf_path?: string
+  epub_path?: string
+  synced?: boolean
+  pending_author_approval?: boolean
+  sync_reason?: string
   chapters?: Array<{ title?: string; content?: string; summary?: string }>
   outline?: { chapters?: Array<{ title?: string; content?: string; summary?: string }> }
 }
 
-// GET /api/generate/book/status/:jobId - Polls the book generator and auto-syncs on completion.
+// GET /api/generate/book/status/:jobId - Polls the book generator and safely
+// applies a completed job exactly once (durable, transactional, edit-safe).
 export async function GET(
   request: NextRequest,
   { params }: { params: { jobId: string } }
@@ -54,20 +62,68 @@ export async function GET(
   const status = (await response.json()) as JobStatus
 
   // Job statuses include full chapter content - only the book owner may read them.
-  if (status.book_id) {
-    const { booksTable, bookOwnerCol } = await getContentSchemaTables(pool)
-    const owned = await pool.query(
-      `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
-      [status.book_id, userId]
-    )
-    if (owned.rows.length === 0) {
-      return NextResponse.json({ error: 'Job not found' }, { status: 404 })
-    }
+  // Absent book_id fails closed: we cannot prove ownership, so we do not sync.
+  if (!status.book_id) {
+    return NextResponse.json({ error: 'Job not found' }, { status: 404 })
+  }
+  const { booksTable, bookOwnerCol } = await getContentSchemaTables(pool)
+  const owned = await pool.query(
+    `SELECT id FROM ${booksTable} WHERE id = $1 AND ${bookOwnerCol} = $2`,
+    [status.book_id, userId]
+  )
+  if (owned.rows.length === 0) {
+    return NextResponse.json({ error: 'Job not found' }, { status: 404 })
   }
 
-  if (status.status === 'completed' && status.book_id && !status.synced) {
-    await autoSyncBook(pool, status.book_id, params.jobId, status)
-    status.synced = true
+  if (status.status === 'completed' && !status.synced) {
+    // Apply through the shared manuscript-safe path (single transaction,
+    // per-job durability, baseline conflict detection). Output comes from the
+    // authoritative generator response, never from the client.
+    const output: CompletionOutput = {
+      chapters: status.chapters || status.outline?.chapters || [],
+      synopsis: status.synopsis ?? null,
+      themes: status.themes ?? null,
+      pdfPath: status.pdf_path ?? null,
+      epubPath: status.epub_path ?? null,
+    }
+    let applied
+    try {
+      applied = await applyGenerationCompletion(pool, {
+        bookId: status.book_id,
+        jobId: params.jobId,
+        userId,
+        output,
+      })
+    } catch (error) {
+      console.error(
+        `Completion apply failed for book ${status.book_id} / job ${params.jobId}:`,
+        error
+      )
+      // Persistence failed: never report the job as synced.
+      return NextResponse.json(
+        { error: 'Failed to persist generated book', job_status: status.status },
+        { status: 500 }
+      )
+    }
+
+    switch (applied.outcome) {
+      case 'applied':
+      case 'already_applied':
+        status.synced = true
+        break
+      case 'pending_author_approval':
+        status.synced = false
+        status.pending_author_approval = true
+        status.sync_reason = applied.reason ?? 'author edits since generation start'
+        break
+      case 'rejected_stale':
+      case 'rejected_bound':
+        status.synced = false
+        status.sync_reason = applied.reason ?? 'stale job'
+        break
+      default:
+        return NextResponse.json({ error: 'Book not found' }, { status: 404 })
+    }
   } else if (status.status === 'failed') {
     await markGenerationLogFailed(pool, params.jobId, status.error || 'Book generation failed')
     if (status.book_id) {
@@ -97,55 +153,6 @@ async function updateBookGenerationStatus(
     )
   } catch (error) {
     console.warn(`Failed to update generation status for book ${bookId}:`, error)
-  }
-}
-
-async function autoSyncBook(pool: Pool, bookId: string, jobId: string, status: JobStatus) {
-  try {
-    const { booksTable, chaptersTable } = await getContentSchemaTables(pool)
-    const chapters = status.chapters || status.outline?.chapters || []
-
-    if (chapters.length > 0) {
-      await pool.query(`DELETE FROM ${chaptersTable} WHERE book_id = $1`, [bookId])
-      for (let i = 0; i < chapters.length; i++) {
-        const chapter = chapters[i]
-        const content = chapter.content || chapter.summary || ''
-        const title = chapter.title || `Chapter ${i + 1}`
-        await pool.query(
-          `INSERT INTO ${chaptersTable} (book_id, chapter_number, title, content, word_count, status)
-           VALUES ($1, $2, $3, $4, $5, 'draft')`,
-          [bookId, i + 1, title, content, countWords(content)]
-        )
-      }
-    }
-
-    const metadata: Record<string, unknown> = {
-      generation_completed: true,
-      generation_status: 'completed',
-      generation_job_id: jobId,
-      completed_at: new Date().toISOString(),
-    }
-    if (status.synopsis) metadata.ai_synopsis = status.synopsis
-    if (status.themes) metadata.themes = status.themes
-
-    await pool.query(
-      `UPDATE ${booksTable} SET
-         metadata = COALESCE(metadata, '{}'::jsonb) || $1,
-         status = 'draft',
-         updated_at = NOW(),
-         word_count = (SELECT COALESCE(SUM(word_count), 0) FROM ${chaptersTable} WHERE book_id = $2)
-       WHERE id = $2`,
-      [JSON.stringify(metadata), bookId]
-    )
-
-    await pool.query(
-      `UPDATE generation_logs
-         SET status = 'completed', completed_at = NOW()
-       WHERE book_id = $1 AND result->>'job_id' = $2`,
-      [bookId, jobId]
-    )
-  } catch (error) {
-    console.error(`autoSyncBook failed for book ${bookId} / job ${jobId}:`, error)
   }
 }
 
