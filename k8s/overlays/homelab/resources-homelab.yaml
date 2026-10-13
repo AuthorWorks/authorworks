@@ -1,0 +1,31 @@
+# #396 X3: measured 7d per-replica p95 CPU / exact memory peaks + 20%.
+# Keep book-generation and frontend burst limits from the base manifests.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authorworks-book-generator
+  namespace: authorworks
+spec:
+  template:
+    spec:
+      containers:
+      - name: book-generator
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authorworks-frontend
+  namespace: authorworks
+spec:
+  template:
+    spec:
+      containers:
+      - name: frontend
+        resources:
+          requests:
+            cpu: 10m
+            memory: 128Mi
