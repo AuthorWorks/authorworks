@@ -10,6 +10,9 @@ resources:
   - forgejo-sealed-secret.yaml
   - content-worker.yaml
 
+patches:
+  - path: resources-homelab.yaml
+
 labels:
   - pairs:
       environment: homelab
