@@ -45,6 +45,32 @@ spec:
       # in CI if cross-arch scheduling is desired.
       nodeSelector:
         kubernetes.io/arch: amd64
+      # Spread the two replicas over two nodes. With no rule, both ran on one
+      # homelab node from 2026-10-13, so losing that node would have taken
+      # the whole frontend with it. Same block as cloudflared and Traefik in
+      # the homelab repo (infrastructure/cloudflared.yaml,
+      # infrastructure/traefik-values.yaml).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          # Required, not preferred. The cost: when a node this pod may use
+          # has no room, the pod waits Pending instead of doubling up beside
+          # its twin. A rollout then stalls with the old pods serving, and a
+          # lost replica's replacement waits too.
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: authorworks-frontend
+          # Count only pods of the same ReplicaSet, so the old revision's
+          # pods do not count against the new pair during a rollout.
+          matchLabelKeys:
+            - pod-template-hash
+          # Count only nodes this pod may be placed on (node selector,
+          # untolerated taints, which a cordon adds). With one such node
+          # left, both replicas may share it, and they stay together until
+          # the next rollout.
+          nodeAffinityPolicy: Honor
+          nodeTaintsPolicy: Honor
       containers:
       - name: frontend
         image: git.leopaska.xyz/leo/authorworks-frontend
