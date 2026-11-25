@@ -77,6 +77,18 @@ spec:
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
+        # Delay the stop signal by 10 s. Traefik needs a moment to stop
+        # choosing a pod that has been told to stop, and a request sent to it
+        # in that gap can be lost: on 2026-11-25 the blank's rollout had one,
+        # routed about 2 s after the pod's Killing event and abandoned by the
+        # client at 5 s. The kubelet does the waiting, so the image needs no
+        # `sleep`. Costs: about 20 s of the default 30 s grace period remain
+        # for the server to exit, and a restart after a failed liveness probe
+        # also waits these 10 s.
+        lifecycle:
+          preStop:
+            sleep:
+              seconds: 10
         env:
         - name: NODE_ENV
           value: "production"
