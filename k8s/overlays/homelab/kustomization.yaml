@@ -6,7 +6,6 @@ namespace: authorworks
 resources:
   - ../../base-minimal
   - sealed-secrets.yaml
-  - ghcr-sealed-secret.yaml
   - forgejo-sealed-secret.yaml
   - content-worker.yaml
 
