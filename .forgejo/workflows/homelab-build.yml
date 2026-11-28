@@ -44,8 +44,28 @@ jobs:
         run: |
           set -eu
           apt-get update -qq && apt-get install -y -qq git
+          auth_dir="$(mktemp -d)"
+          trap 'rm -rf "${auth_dir}"' EXIT
+          git_password_file="${auth_dir}/git-password"
+          git_askpass="${auth_dir}/askpass"
+          printf '%s' "${REPO_TOKEN}" >"${git_password_file}"
+          unset REPO_TOKEN
+          cat >"${git_askpass}" <<'EOF'
+          #!/bin/sh
+          case "${1:-}" in
+            *Username*) printf '%s\n' "${GIT_AUTH_USERNAME:?}" ;;
+            *Password*) cat "${GIT_PASSWORD_FILE:?}" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod 600 "${git_password_file}"
+          chmod 700 "${git_askpass}"
+          export GIT_ASKPASS="${git_askpass}"
+          export GIT_AUTH_USERNAME="${GITHUB_ACTOR}"
+          export GIT_PASSWORD_FILE="${git_password_file}"
+          export GIT_TERMINAL_PROMPT=0
           sha="$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
-          head_now="$(git ls-remote "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "refs/heads/${GITHUB_REF_NAME}" | cut -c1-7)"
+          head_now="$(git ls-remote "http://${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "refs/heads/${GITHUB_REF_NAME}" | cut -c1-7)"
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
           if [ -n "${head_now}" ] && [ "${head_now}" != "${sha}" ]; then
             echo "superseded=true" >> "$GITHUB_OUTPUT"
@@ -63,8 +83,28 @@ jobs:
           CARGO_REGISTRIES_FORGEJO_TOKEN: "Bearer ${{ secrets.CARGO_REGISTRY_TOKEN }}"
         run: |
           set -eu
+          auth_dir="$(mktemp -d)"
+          trap 'rm -rf "${auth_dir}"' EXIT
+          git_password_file="${auth_dir}/git-password"
+          git_askpass="${auth_dir}/askpass"
+          printf '%s' "${REPO_TOKEN}" >"${git_password_file}"
+          unset REPO_TOKEN
+          cat >"${git_askpass}" <<'EOF'
+          #!/bin/sh
+          case "${1:-}" in
+            *Username*) printf '%s\n' "${GIT_AUTH_USERNAME:?}" ;;
+            *Password*) cat "${GIT_PASSWORD_FILE:?}" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod 600 "${git_password_file}"
+          chmod 700 "${git_askpass}"
+          export GIT_ASKPASS="${git_askpass}"
+          export GIT_AUTH_USERNAME="${GITHUB_ACTOR}"
+          export GIT_PASSWORD_FILE="${git_password_file}"
+          export GIT_TERMINAL_PROMPT=0
           git init -q repo
-          git -C repo fetch -q --depth 1 "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
+          git -C repo fetch -q --depth 1 "http://${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
           git -C repo checkout -q FETCH_HEAD
           cd repo/core/book-generator
           # Explicit native target: the workspace .cargo/config.toml defaults
@@ -83,8 +123,28 @@ jobs:
         run: |
           set -eu
           apk add --no-cache git
+          auth_dir="$(mktemp -d)"
+          trap 'rm -rf "${auth_dir}"' EXIT
+          git_password_file="${auth_dir}/git-password"
+          git_askpass="${auth_dir}/askpass"
+          printf '%s' "${REPO_TOKEN}" >"${git_password_file}"
+          unset REPO_TOKEN
+          cat >"${git_askpass}" <<'EOF'
+          #!/bin/sh
+          case "${1:-}" in
+            *Username*) printf '%s\n' "${GIT_AUTH_USERNAME:?}" ;;
+            *Password*) cat "${GIT_PASSWORD_FILE:?}" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod 600 "${git_password_file}"
+          chmod 700 "${git_askpass}"
+          export GIT_ASKPASS="${git_askpass}"
+          export GIT_AUTH_USERNAME="${GITHUB_ACTOR}"
+          export GIT_PASSWORD_FILE="${git_password_file}"
+          export GIT_TERMINAL_PROMPT=0
           git init -q repo
-          git -C repo fetch -q --depth 1 "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
+          git -C repo fetch -q --depth 1 "http://${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
           git -C repo checkout -q FETCH_HEAD
           cd repo/frontend/app
           npm ci --no-audit --no-fund
@@ -125,11 +185,36 @@ jobs:
           DOCKER_HOST: tcp://172.17.0.1:2375
         run: |
           set -eu
+          [ "$(uname -m)" = "x86_64" ] || { echo "amd64 runner required, got $(uname -m)" >&2; exit 1; }
           apk add --no-cache git skopeo
+          auth_dir="$(mktemp -d)"
+          trap 'rm -rf "${auth_dir}"' EXIT
+          git_password_file="${auth_dir}/git-password"
+          package_password_file="${auth_dir}/package-password"
+          git_askpass="${auth_dir}/askpass"
+          registry_auth_file="${auth_dir}/registry-auth.json"
+          printf '%s' "${REPO_TOKEN}" >"${git_password_file}"
+          printf '%s' "${PACKAGE_TOKEN}" >"${package_password_file}"
+          unset REPO_TOKEN PACKAGE_TOKEN
+          cat >"${git_askpass}" <<'EOF'
+          #!/bin/sh
+          case "${1:-}" in
+            *Username*) printf '%s\n' "${GIT_AUTH_USERNAME:?}" ;;
+            *Password*) cat "${GIT_PASSWORD_FILE:?}" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod 600 "${git_password_file}" "${package_password_file}"
+          chmod 700 "${git_askpass}"
+          export GIT_ASKPASS="${git_askpass}"
+          export GIT_AUTH_USERNAME="${GITHUB_ACTOR}"
+          export GIT_PASSWORD_FILE="${git_password_file}"
+          export GIT_TERMINAL_PROMPT=0
+          export REGISTRY_AUTH_FILE="${registry_auth_file}"
           # Build the exact commit the gate tested — not "branch HEAD at clone
           # time", which under concurrent pushes could be a newer, untested tree.
           git init -q repo
-          git -C repo fetch -q --depth 1 "http://${GITHUB_ACTOR}:${REPO_TOKEN}@${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
+          git -C repo fetch -q --depth 1 "http://${REGISTRY_INTERNAL}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
           git -C repo checkout -q FETCH_HEAD
           short_sha="$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
           img="${REGISTRY_PUBLIC}/leo/${{ matrix.image }}"
@@ -137,15 +222,18 @@ jobs:
           docker build \
             --build-arg FORGEJO_CARGO_TOKEN="${CARGO_REGISTRY_TOKEN}" \
             --tag "${img}:sha-${short_sha}" \
+            --tag "${img}:deploy" \
             --tag "${img}:homelab" \
             --file "repo/${{ matrix.dockerfile }}" \
             "repo/${{ matrix.context }}"
 
-          for tag in "sha-${short_sha}" homelab; do
+          skopeo login --tls-verify=false --authfile "${REGISTRY_AUTH_FILE}" \
+            --username leo --password-stdin "${REGISTRY_INTERNAL}" \
+            <"${package_password_file}"
+          for tag in "sha-${short_sha}" deploy homelab; do
             archive="/tmp/${{ matrix.image }}-${tag}.tar"
             docker save "${img}:${tag}" -o "${archive}"
-            skopeo copy --dest-tls-verify=false \
-              --dest-creds "leo:${PACKAGE_TOKEN}" \
+            skopeo copy --authfile "${REGISTRY_AUTH_FILE}" --dest-tls-verify=false \
               "docker-archive:${archive}:${img}:${tag}" \
               "docker://${REGISTRY_INTERNAL}/leo/${{ matrix.image }}:${tag}"
             rm -f "${archive}"
